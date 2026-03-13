@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Virtual env
+venv/
+.venv/
+env/
+ENV/
+
+# Logs / cache
+*.log
+logs/
+log/
+cache/
+.cache/
+tmp/
+temp/
+wandb/
+
+# Training / outputs / checkpoints
+output/
+outputs/
+run/
+runs/
+save/
+saved/
+artifacts/
+
+*checkpoint*/
+*checkpoints*/
+*ckpt*/
+*result*/
+*results*/
+*analysis*/
+*predictions*/
+
+# Datasets
+data/
+datasets/
+dataset/
+corpus/
+benchmarks/
+downloads/
+
+# Model weights / binary artifacts
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+*.onnx
+*.h5
+*.npz
+*.npy
+*.pkl
+*.joblib
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.bz2
+*.7z
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Core dump files
+core
+core.*
+*.core

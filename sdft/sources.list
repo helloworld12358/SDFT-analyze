@@ -1,0 +1,12 @@
+deb http://nexus.sii.shaipower.online/repository/ubuntu/ jammy main restricted universe multiverse
+deb-src http://nexus.sii.shaipower.online/repository/ubuntu/ jammy main restricted universe multiverse
+
+deb http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-security main restricted universe multiverse
+deb-src http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-security main restricted universe multiverse
+
+deb http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-updates main restricted universe multiverse
+deb-src http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-updates main restricted universe multiverse
+
+deb http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-backports main restricted universe multiverse
+deb-src http://nexus.sii.shaipower.online/repository/ubuntu/ jammy-backports main restricted universe multiverse
+
