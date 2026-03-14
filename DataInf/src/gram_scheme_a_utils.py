@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
 import json
 import math
@@ -697,6 +698,8 @@ def run_calc_dataset_similarity_pair(
     out_path: str,
     lora_path: Optional[str] = None,
     damping: Optional[float] = None,
+    env_overrides: Optional[Dict[str, str]] = None,
+    timeout_sec: Optional[int] = None,
 ) -> Tuple[bool, str]:
     cmd = [
         python_exe,
@@ -716,10 +719,19 @@ def run_calc_dataset_similarity_pair(
         cmd.extend(["--lora_path", lora_path])
     if damping is not None:
         cmd.extend(["--damping", str(damping)])
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    ok = proc.returncode == 0
-    msg = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-    return ok, msg.strip()
+    env = os.environ.copy()
+    if env_overrides:
+        env.update({k: str(v) for k, v in env_overrides.items()})
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout_sec)
+        ok = proc.returncode == 0
+        msg = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+        return ok, msg.strip()
+    except subprocess.TimeoutExpired as e:
+        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        err = (e.stderr or "") if isinstance(e.stderr, str) else ""
+        msg = f"timeout after {timeout_sec}s\n{out}\n{err}".strip()
+        return False, msg
 
 
 @dataclass
@@ -740,6 +752,9 @@ def compute_pairwise_scores_via_cli(
     lora_path: Optional[str] = None,
     damping: Optional[float] = None,
     python_exe: Optional[str] = None,
+    max_workers: Optional[int] = None,
+    gpu_ids: Optional[Sequence[str]] = None,
+    pair_timeout_sec: Optional[int] = None,
 ) -> PairwiseRunResult:
     ensure_dir(output_dir)
     pairwise_dir = ensure_dir(os.path.join(output_dir, "pairwise_result"))
@@ -752,14 +767,38 @@ def compute_pairwise_scores_via_cli(
         if not p or (not os.path.isfile(p)):
             missing.append(p or f"(missing mapping for {n})")
 
+    pair_jobs: List[Tuple[str, str, str]] = []
+    for i, a in enumerate(dataset_names):
+        for j in range(i, len(dataset_names)):
+            b = dataset_names[j]
+            out_json = os.path.join(pairwise_dir, f"sim_{a}_{b}.json")
+            if os.path.isfile(out_json):
+                continue
+            pair_jobs.append((a, b, out_json))
+
+    gpu_list: List[str] = []
+    if gpu_ids:
+        gpu_list = [str(x).strip() for x in gpu_ids if str(x).strip()]
+    if not gpu_list:
+        env_gpu = os.environ.get("SCHEMEA_GPU_IDS", "").strip()
+        if not env_gpu:
+            env_gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+        if env_gpu:
+            gpu_list = [x.strip() for x in env_gpu.split(",") if x.strip()]
+
+    if max_workers is None or max_workers <= 0:
+        max_workers_eff = len(gpu_list) if gpu_list else 1
+    else:
+        max_workers_eff = max_workers
+    max_workers_eff = max(1, max_workers_eff)
+
     failed_pairs: List[Dict[str, str]] = []
-    if not missing:
-        for i, a in enumerate(dataset_names):
-            for j in range(i, len(dataset_names)):
-                b = dataset_names[j]
-                out_json = os.path.join(pairwise_dir, f"sim_{a}_{b}.json")
-                if os.path.isfile(out_json):
-                    continue
+    if not missing and pair_jobs:
+        if max_workers_eff <= 1:
+            for idx, (a, b, out_json) in enumerate(pair_jobs):
+                env_overrides = {"TOKENIZERS_PARALLELISM": "false"}
+                if gpu_list:
+                    env_overrides["CUDA_VISIBLE_DEVICES"] = gpu_list[idx % len(gpu_list)]
                 ok, msg = run_calc_dataset_similarity_pair(
                     python_exe=python_exe,
                     calc_script=calc_script,
@@ -770,9 +809,41 @@ def compute_pairwise_scores_via_cli(
                     out_path=out_json,
                     lora_path=lora_path,
                     damping=damping,
+                    env_overrides=env_overrides,
+                    timeout_sec=pair_timeout_sec,
                 )
                 if not ok:
                     failed_pairs.append({"pair": f"{a}|{b}", "message": msg[:2000]})
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers_eff) as ex:
+                fut_map = {}
+                for idx, (a, b, out_json) in enumerate(pair_jobs):
+                    env_overrides = {"TOKENIZERS_PARALLELISM": "false"}
+                    if gpu_list:
+                        env_overrides["CUDA_VISIBLE_DEVICES"] = gpu_list[idx % len(gpu_list)]
+                    fut = ex.submit(
+                        run_calc_dataset_similarity_pair,
+                        python_exe,
+                        calc_script,
+                        base_model_path,
+                        train_dataset_path,
+                        grad_paths[a],
+                        grad_paths[b],
+                        out_json,
+                        lora_path,
+                        damping,
+                        env_overrides,
+                        pair_timeout_sec,
+                    )
+                    fut_map[fut] = (a, b)
+                for fut in as_completed(fut_map):
+                    a, b = fut_map[fut]
+                    try:
+                        ok, msg = fut.result()
+                    except Exception as e:
+                        ok, msg = False, str(e)
+                    if not ok:
+                        failed_pairs.append({"pair": f"{a}|{b}", "message": str(msg)[:2000]})
 
     K = matrix_from_pairwise_json(pairwise_dir, dataset_names)
     return PairwiseRunResult(matrix=K, pairwise_dir=pairwise_dir, missing_grad_paths=missing, failed_pairs=failed_pairs)

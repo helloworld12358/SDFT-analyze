@@ -31,11 +31,16 @@
 - `SCHEMEA_PYTHON`：Python 可执行文件（默认 `python`）
 - `SCHEMEA_EXISTING_RESULT_ROOTS`：A1 读取已有结果的根目录（逗号分隔）
 - `SCHEMEA_ALLOW_RECOMPUTE_MISSING`：A1 缺失时是否最小补算（`1` 开启，`0` 关闭，默认 `1`）
+- `SCHEMEA_GPU_IDS`：并行 pair 任务可用 GPU 列表（例如 `0,1,2,3`）
+- `SCHEMEA_PAIRWISE_WORKERS`：pair 并行工作进程数（`0` 表示自动按 GPU 数）
+- `SCHEMEA_PAIR_TIMEOUT_SEC`：单个 pair 超时（秒，`0` 不限）
 
 示例：
 ```bash
 export SCHEMEA_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
 export SCHEMEA_EXISTING_RESULT_ROOTS=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf/result
+export SCHEMEA_GPU_IDS=0,1,2,3
+export SCHEMEA_PAIRWISE_WORKERS=4
 ```
 
 ## 5. 建议提交顺序

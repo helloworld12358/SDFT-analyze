@@ -80,6 +80,9 @@ def _attempt_recompute_ownh(
     base_model_path: str,
     damping: float,
     python_exe: str,
+    max_workers: Optional[int],
+    gpu_ids: List[str],
+    pair_timeout_sec: Optional[int],
 ) -> Tuple[Optional[np.ndarray], Dict[str, object], str]:
     train_data_path = resolve_train_dataset_path(sdft_root, train_dataset, method)
     lora_path = resolve_checkpoint_path(sdft_root, epoch, train_dataset, method)
@@ -104,6 +107,9 @@ def _attempt_recompute_ownh(
         lora_path=lora_path,
         damping=damping,
         python_exe=python_exe,
+        max_workers=max_workers,
+        gpu_ids=gpu_ids,
+        pair_timeout_sec=pair_timeout_sec,
     )
     context["pairwise_dir"] = run.pairwise_dir
     context["failed_pairs"] = run.failed_pairs
@@ -131,6 +137,9 @@ def main() -> None:
     p.add_argument("--base_model_path", type=str, default=None)
     p.add_argument("--damping", type=float, default=0.001)
     p.add_argument("--python_exe", type=str, default=sys.executable)
+    p.add_argument("--num_workers", type=int, default=0, help="<=0 表示自动按 GPU 数量并行（仅补算时生效）")
+    p.add_argument("--gpu_ids", type=str, default="", help="逗号分隔，如 0,1,2,3（仅补算时生效）")
+    p.add_argument("--pair_timeout_sec", type=int, default=0, help="单个 pair 超时秒数，<=0 表示不限")
     p.add_argument("--output_root", type=str, default=None)
     args = p.parse_args()
 
@@ -145,6 +154,9 @@ def main() -> None:
     task_names = split_csv_arg(args.task_names, DEFAULT_TASKS)
     extra_roots = [x.strip() for x in args.existing_result_roots.split(",") if x.strip()]
     result_roots = resolve_existing_result_roots(datainf_root, explicit_roots=extra_roots)
+    gpu_ids = [x.strip() for x in args.gpu_ids.split(",") if x.strip()]
+    max_workers = None if args.num_workers <= 0 else args.num_workers
+    pair_timeout_sec = None if args.pair_timeout_sec <= 0 else args.pair_timeout_sec
 
     base_model_path = args.base_model_path or os.path.join(sdft_root, "model", "Llama-2-7b-chat-hf")
 
@@ -195,6 +207,9 @@ def main() -> None:
                         base_model_path=base_model_path,
                         damping=args.damping,
                         python_exe=args.python_exe,
+                        max_workers=max_workers,
+                        gpu_ids=gpu_ids,
+                        pair_timeout_sec=pair_timeout_sec,
                     )
                     source_detail["recompute_context"] = ctx
                     if _shape_ok(recomputed, len(task_names)):

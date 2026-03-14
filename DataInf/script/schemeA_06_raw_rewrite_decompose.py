@@ -192,6 +192,9 @@ def run_one_combo(
     damping: float,
     python_exe: str,
     k_angles: int,
+    max_workers: Optional[int],
+    gpu_ids: List[str],
+    pair_timeout_sec: Optional[int],
 ) -> Dict[str, object]:
     run_dir = os.path.join(
         output_root,
@@ -334,6 +337,9 @@ def run_one_combo(
         lora_path=oracle_lora_path,
         damping=damping,
         python_exe=python_exe,
+        max_workers=max_workers,
+        gpu_ids=gpu_ids,
+        pair_timeout_sec=pair_timeout_sec,
     )
     if pairwise.matrix is None:
         reason = write_unavailable_note(
@@ -503,6 +509,9 @@ def main() -> None:
     p.add_argument("--base_model_path", type=str, default=None)
     p.add_argument("--damping", type=float, default=0.001)
     p.add_argument("--python_exe", type=str, default=sys.executable)
+    p.add_argument("--num_workers", type=int, default=0, help="<=0 表示自动按 GPU 数量并行")
+    p.add_argument("--gpu_ids", type=str, default="", help="逗号分隔，如 0,1,2,3")
+    p.add_argument("--pair_timeout_sec", type=int, default=0, help="单个 pair 超时秒数，<=0 表示不限")
     p.add_argument("--output_root", type=str, default=None)
     p.add_argument("--k_angles", type=int, default=8)
     args = p.parse_args()
@@ -517,6 +526,9 @@ def main() -> None:
     feature_methods = normalize_method_list(split_csv_arg(args.feature_method, ["sdft"])) or ["sdft"]
     base_model_path = args.base_model_path or os.path.join(sdft_root, "model", "Llama-2-7b-chat-hf")
     fallback_when_mixed_unavailable = not args.no_fallback_when_mixed_unavailable
+    gpu_ids = [x.strip() for x in args.gpu_ids.split(",") if x.strip()]
+    max_workers = None if args.num_workers <= 0 else args.num_workers
+    pair_timeout_sec = None if args.pair_timeout_sec <= 0 else args.pair_timeout_sec
 
     rows: List[Dict[str, object]] = []
     for train_dataset in train_datasets:
@@ -538,6 +550,9 @@ def main() -> None:
                     damping=args.damping,
                     python_exe=args.python_exe,
                     k_angles=args.k_angles,
+                    max_workers=max_workers,
+                    gpu_ids=gpu_ids,
+                    pair_timeout_sec=pair_timeout_sec,
                 )
                 rows.append(row)
                 if row.get("summary_json"):

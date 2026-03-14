@@ -75,6 +75,9 @@ def main() -> None:
     p.add_argument("--base_model_path", type=str, default=None)
     p.add_argument("--damping", type=float, default=0.001)
     p.add_argument("--python_exe", type=str, default=sys.executable)
+    p.add_argument("--num_workers", type=int, default=0, help="<=0 表示自动按 GPU 数量并行")
+    p.add_argument("--gpu_ids", type=str, default="", help="逗号分隔，如 0,1,2,3")
+    p.add_argument("--pair_timeout_sec", type=int, default=0, help="单个 pair 超时秒数，<=0 表示不限")
     p.add_argument("--output_root", type=str, default=None)
     args = p.parse_args()
 
@@ -88,6 +91,9 @@ def main() -> None:
     methods = _pick_methods(args)
     task_names = split_csv_arg(args.task_names, DEFAULT_TASKS)
     base_model_path = args.base_model_path or os.path.join(sdft_root, "model", "Llama-2-7b-chat-hf")
+    gpu_ids = [x.strip() for x in args.gpu_ids.split(",") if x.strip()]
+    max_workers = None if args.num_workers <= 0 else args.num_workers
+    pair_timeout_sec = None if args.pair_timeout_sec <= 0 else args.pair_timeout_sec
 
     rows: List[Dict[str, object]] = []
 
@@ -177,6 +183,9 @@ def main() -> None:
                     lora_path=None,
                     damping=args.damping,
                     python_exe=args.python_exe,
+                    max_workers=max_workers,
+                    gpu_ids=gpu_ids,
+                    pair_timeout_sec=pair_timeout_sec,
                 )
 
                 if run.matrix is None:
