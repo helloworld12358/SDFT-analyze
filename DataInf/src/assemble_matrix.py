@@ -1,4 +1,4 @@
-# File: /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/DataInf/src/assemble_matrix.py
+# File: DataInf/src/assemble_matrix.py
 # Minor robustness: if out_csv not provided, default to result_dir/pairwise_matrix.csv
 
 import argparse

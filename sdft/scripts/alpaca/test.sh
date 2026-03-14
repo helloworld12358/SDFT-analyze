@@ -1,12 +1,18 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 
 # 单节点单进程运行版本（使用单张 GPU）
 # - 如果你想要用多卡并行，请用原来的 torchrun 脚本 / 或把本脚本中 python 调用改回 torchrun --nproc_per_node=N。
 # - 仅把运行方式改为单进程，脚本其余行为（参数、输出目录、merge 调用）保持不变。
 
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
-ADAPTER_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/epoch1_checkpoints/alpaca/sft"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
+ADAPTER_DIR="${SDFT_ROOT}/epoch1_checkpoints/alpaca/sft"
 TRAIN_DATASET="gsm8k"
 OUTPUT_FOLDER="analysis/alpaca/gradient_analysis_gsm8ktest"
 PYTHON_SCRIPT="analyze_gradients_llama_factory.py"

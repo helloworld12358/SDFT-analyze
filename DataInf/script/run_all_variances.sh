@@ -2,14 +2,17 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+DATAINF_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${DATAINF_ROOT}/.." && pwd)"
+SDFT_ROOT="${REPO_ROOT}/sdft"
 
 # ================= 配置区域 (保留了你的修改) =================
-PYTHON_SCRIPT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/DataInf/src/compute_loss_variance_v2.py"
-BASE_MODEL="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
-CHECKPOINT_ROOT_EPOCH1="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/epoch1_checkpoints"
-CHECKPOINT_ROOT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/checkpoints"
-DATA_ROOT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data"
-OUTPUT_PARENT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/DataInf/result"
+PYTHON_SCRIPT="${DATAINF_ROOT}/src/compute_loss_variance_v2.py"
+BASE_MODEL="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
+CHECKPOINT_ROOT_EPOCH1="${SDFT_ROOT}/epoch1_checkpoints"
+CHECKPOINT_ROOT="${SDFT_ROOT}/checkpoints"
+DATA_ROOT="${SDFT_ROOT}/data"
+OUTPUT_PARENT="${DATAINF_ROOT}/result"
 
 MODEL="Llama2_7b"
 MODEL_SHORT="Llama2_7b"

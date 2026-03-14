@@ -1,4 +1,10 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 # 分析 LoRA 梯度的启动脚本（调用 analyze_gradients_llama_factory.py）
 # 输出到终端（不重定向到文件）。
@@ -9,9 +15,9 @@ set -euo pipefail
 # ---------------------------
 # 基本配置（请按实际改路径）
 # ---------------------------
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
 # 如果不使用 adapter（只提供 base model），请留空 ADAPTER_DIR=""
-ADAPTER_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/epoch1_checkpoints/magicoder/sft"
+ADAPTER_DIR="${SDFT_ROOT}/epoch1_checkpoints/magicoder/sft"
 TRAIN_DATASET="magicoder"
 OUTPUT_FOLDER="analysis/${TRAIN_DATASET}/gradient_analysis"
 # python 脚本文件名（确保与实际文件名一致）

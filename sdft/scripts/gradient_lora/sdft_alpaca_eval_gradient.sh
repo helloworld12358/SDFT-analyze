@@ -1,7 +1,13 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
 PYTHON_SCRIPT="analyze_gradients_llama_factory.py"
 MERGE_SCRIPT="merge_gradients.py"
 
@@ -20,7 +26,7 @@ ADAPTERS=("gsm8k" "openfunction" "magicoder" "alpaca" "dolly" "lima" "openhermes
 for ADAPTER_NAME in "${ADAPTERS[@]}"; do
     echo "=== Processing adapter: ${ADAPTER_NAME} ==="
     
-    ADAPTER_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/epoch1_checkpoints/${ADAPTER_NAME}/sdft"
+    ADAPTER_DIR="${SDFT_ROOT}/epoch1_checkpoints/${ADAPTER_NAME}/sdft"
     TRAIN_DATASET="alpaca"
     OUTPUT_FOLDER="analysis/${ADAPTER_NAME}/gradient_analysis_sdft_alpacaeval"
     

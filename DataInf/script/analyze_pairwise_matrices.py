@@ -8,7 +8,7 @@ analyze_pairwise_matrices_write_txt_with_vecs.py
 计算每个矩阵的特征值与特征向量，保存并**在 analysis_log.txt 中以可读格式直接写出每个特征值对应的特征向量**（覆盖旧文件）。
 同时保留原来的 npy 文件与可视化 png（若能绘制）。
 将此文件放到：
-    /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/DataInf/scripts/
+    DataInf/script/
 
 直接运行：
     python analyze_pairwise_matrices_write_txt_with_vecs.py

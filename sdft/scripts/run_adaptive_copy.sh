@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 
 export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:128"
@@ -6,8 +12,8 @@ export PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:128"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-BASE_MODEL="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
-CHECKPOINTS_ROOT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/checkpoints"
+BASE_MODEL="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
+CHECKPOINTS_ROOT="${SDFT_ROOT}/checkpoints"
 PY_SCRIPT="${SCRIPT_DIR}/theorem_experiment_random.py"   # 修改后的 Python 脚本路径
 
 OUTPUT_BASE="${PROJECT_ROOT}/experiment_results_random"
@@ -24,11 +30,11 @@ TRAIN_DOMAINS=( "gsm8k" "openfunction" "magicoder" "alpaca" "dolly" "lima" "open
 CKPT_TYPES=( "sft" "sdft" )
 
 declare -A TEST_PATHS
-TEST_PATHS["gsm8k"]="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data/gsm8k/gsm8k_test.json"
-TEST_PATHS["openfunction"]="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data/openfunction/openfunction_test.json"
-TEST_PATHS["humaneval"]="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data/humanevalpack_test.jsonl"
-TEST_PATHS["multiarith"]="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data/multiarith_test.json"
-TEST_PATHS["alpaca_eval"]="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data/alpaca_eval.json"
+TEST_PATHS["gsm8k"]="${SDFT_ROOT}/data/gsm8k/gsm8k_test.json"
+TEST_PATHS["openfunction"]="${SDFT_ROOT}/data/openfunction/openfunction_test.json"
+TEST_PATHS["humaneval"]="${SDFT_ROOT}/data/humanevalpack_test.jsonl"
+TEST_PATHS["multiarith"]="${SDFT_ROOT}/data/multiarith_test.json"
+TEST_PATHS["alpaca_eval"]="${SDFT_ROOT}/data/alpaca_eval.json"
 
 echo "[$(date +%T)] Starting per-GPU queue runner (GPUS: ${GPUS[*]})"
 echo "[$(date +%T)] Results -> $OUTPUT_BASE"

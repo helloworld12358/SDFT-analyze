@@ -1,7 +1,13 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
 ADAPTER_DIR=""   # 留空表示仅提供 base model（脚本会在内存中创建 LoRA 用于分析）
 TRAIN_DATASET="magicoder"
 OUTPUT_FOLDER="analysis/${TRAIN_DATASET}/gradient_analysis_base"

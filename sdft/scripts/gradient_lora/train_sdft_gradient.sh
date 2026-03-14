@@ -1,8 +1,14 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 set -euo pipefail
 
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
-ADAPTER_BASE_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/epoch1_checkpoints"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
+ADAPTER_BASE_DIR="${SDFT_ROOT}/epoch1_checkpoints"
 PYTHON_SCRIPT="analyze_gradients_llama_factory.py"
 MERGE_SCRIPT="merge_gradients.py"
 

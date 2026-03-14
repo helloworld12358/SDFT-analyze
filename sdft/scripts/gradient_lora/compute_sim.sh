@@ -1,4 +1,10 @@
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 # run_cosine_computation.sh
 # 运行余弦相似度计算脚本的bash脚本（已同步到只使用 log，不再生成 CSV）
@@ -15,9 +21,9 @@ set -o pipefail
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 # 设置基本路径
-ROOT_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/analysis"
-RESULTS_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/results"
-PYTHON_SCRIPT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/compute_avg_grad_cosines.py"
+ROOT_DIR="${SDFT_ROOT}/analysis"
+RESULTS_DIR="${SDFT_ROOT}/results"
+PYTHON_SCRIPT="${SDFT_ROOT}/compute_avg_grad_cosines.py"
 
 # 确保结果目录存在
 mkdir -p "$RESULTS_DIR"

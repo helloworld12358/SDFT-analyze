@@ -1,5 +1,8 @@
 #!/bin/bash
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+DATAINF_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${DATAINF_ROOT}/.." && pwd)"
+SDFT_ROOT="${REPO_ROOT}/sdft"
 PYTHON_SCRIPT="${SCRIPT_DIR}/../src/save_avg_grad.py"
 
 if [ ! -f "$PYTHON_SCRIPT" ]; then
@@ -7,9 +10,9 @@ if [ ! -f "$PYTHON_SCRIPT" ]; then
     exit 1
 fi
 
-BASE_MODEL="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
+BASE_MODEL="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
 LORA_TYPE="sft"
-DATA_ROOT="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data"
+DATA_ROOT="${SDFT_ROOT}/data"
 OUTPUT_ROOT="../output_grads"
 
 BATCH_SIZE=8

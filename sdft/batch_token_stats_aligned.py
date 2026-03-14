@@ -42,7 +42,7 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 
 # 如果你有字体文件 (.ttf/.ttc) 想强制使用以保证 CJK 显示，请填路径；否则留空。
-FORCE_FONT_PATH = ""  # e.g. "/home/you/fonts/NotoSansCJK-Regular.ttc"
+FORCE_FONT_PATH = ""  # e.g. "fonts/NotoSansCJK-Regular.ttc"
 
 # 尝试加载强制字体（优先）
 if FORCE_FONT_PATH:

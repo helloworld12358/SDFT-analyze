@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "${SCRIPT_DIR}/../model" ] && [ -d "${SCRIPT_DIR}/../data" ]; then
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  SDFT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 # run_per_file_stats.sh
 # 按文件逐个调用 per_file_token_stats.py 以保证每个文件内部按自身频率降序绘图
 # 使用前请确保：
@@ -8,9 +14,9 @@
 set -euo pipefail
 
 # ---- 配置区（按需修改） ----
-BASE_DATA_DIR="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/data"
-BASE_RESULT_BASE="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/results"
-MODEL_PATH="/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/sdft/model/Llama-2-7b-chat-hf"
+BASE_DATA_DIR="${SDFT_ROOT}/data"
+BASE_RESULT_BASE="${SDFT_ROOT}/results"
+MODEL_PATH="${SDFT_ROOT}/model/Llama-2-7b-chat-hf"
 PY_SCRIPT="batch_token_stats_aligned.py"   # 若不在当前目录请写绝对路径
 
 DATASETS=( "gsm8k" "openfunction" "magicoder" "alpaca" "dolly" "lima" "openhermes" )
