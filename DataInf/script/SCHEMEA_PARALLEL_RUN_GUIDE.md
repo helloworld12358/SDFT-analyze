@@ -22,7 +22,13 @@
 - `run_schemeA_mixedH_epoch1.sh`
 - `run_schemeA_mixedH_epoch5.sh`
 - `run_schemeA_recover_all.sh`
-- `run_schemeA_raw_rewrite_epoch5.sh`
+- `run_schemeA_raw_rewrite_epoch5_gsm8k.sh`
+- `run_schemeA_raw_rewrite_epoch5_openfunction.sh`
+- `run_schemeA_raw_rewrite_epoch5_magicoder.sh`
+- `run_schemeA_raw_rewrite_epoch5_alpaca.sh`
+- `run_schemeA_raw_rewrite_epoch5_dolly.sh`
+- `run_schemeA_raw_rewrite_epoch5_lima.sh`
+- `run_schemeA_raw_rewrite_epoch5_openhermes.sh`
 - `run_schemeA_score_bridge.sh`
 - `run_schemeA_final_summary.sh`
 
@@ -47,7 +53,7 @@ export SCHEMEA_PAIRWISE_WORKERS=4
 1. `run_schemeA_ownH_collect.sh`
 2. `run_schemeA_crossH_epoch0.sh` / `run_schemeA_crossH_epoch1.sh` / `run_schemeA_crossH_epoch5.sh`（并行）
 3. `run_schemeA_mixedH_epoch0.sh` / `run_schemeA_mixedH_epoch1.sh` / `run_schemeA_mixedH_epoch5.sh`（并行）
-4. `run_schemeA_raw_rewrite_epoch5.sh`
+4. `run_schemeA_raw_rewrite_epoch5_gsm8k.sh` / `run_schemeA_raw_rewrite_epoch5_openfunction.sh` / `run_schemeA_raw_rewrite_epoch5_magicoder.sh` / `run_schemeA_raw_rewrite_epoch5_alpaca.sh` / `run_schemeA_raw_rewrite_epoch5_dolly.sh` / `run_schemeA_raw_rewrite_epoch5_lima.sh` / `run_schemeA_raw_rewrite_epoch5_openhermes.sh`（可并行）
 5. `run_schemeA_score_bridge.sh`
 6. `run_schemeA_recover_all.sh`
 7. `run_schemeA_final_summary.sh`
