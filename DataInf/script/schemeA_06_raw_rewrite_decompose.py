@@ -195,6 +195,9 @@ def run_one_combo(
     max_workers: Optional[int],
     gpu_ids: List[str],
     pair_timeout_sec: Optional[int],
+    pair_shard_count: int,
+    pair_shard_index: int,
+    finalize_only: bool,
 ) -> Dict[str, object]:
     run_dir = os.path.join(
         output_root,
@@ -263,6 +266,10 @@ def run_one_combo(
             out_pt = os.path.join(cache_grad_dir, f"{obj_name}.pt")
             if not os.path.isfile(one_json):
                 _save_one_record_json(one_json, rec)
+            if finalize_only:
+                if os.path.isfile(out_pt):
+                    grad_paths[obj_name] = out_pt
+                continue
             if not os.path.isfile(out_pt):
                 ok, msg = _run_save_avg_grad(
                     python_exe=python_exe,
@@ -278,12 +285,15 @@ def run_one_combo(
                     continue
             grad_paths[obj_name] = out_pt
 
-    if grad_failures:
+    if grad_failures and (not finalize_only):
         with open(os.path.join(run_dir, "grad_build_failures.json"), "w", encoding="utf-8") as f:
             json.dump(grad_failures, f, ensure_ascii=False, indent=2)
 
-    ordered_names = [n for n in object_names if n in grad_paths]
-    if len(ordered_names) < 2:
+    if finalize_only:
+        ordered_names = list(dict.fromkeys(object_names))
+    else:
+        ordered_names = [n for n in object_names if n in grad_paths]
+    if (not finalize_only) and (len(ordered_names) < 2):
         reason = write_unavailable_note(
             os.path.join(run_dir, "unavailable_raw_rewrite.json"),
             reason="insufficient per-object gradients after build/cache stage",
@@ -327,6 +337,7 @@ def run_one_combo(
         )
         return {"status": "unavailable", "reason_file": os.path.abspath(reason), "train_dataset": train_dataset, "epoch": epoch, "feature_method": feature_method}
 
+    tag = f"{train_dataset}_{epoch}_{feature_method}_{oracle_mode_requested}_raw_rewrite"
     pairwise = compute_pairwise_scores_via_cli(
         datainf_root=datainf_root,
         output_dir=run_dir,
@@ -340,7 +351,47 @@ def run_one_combo(
         max_workers=max_workers,
         gpu_ids=gpu_ids,
         pair_timeout_sec=pair_timeout_sec,
+        pair_shard_count=pair_shard_count,
+        pair_shard_index=pair_shard_index,
+        run_missing_pairs=(not finalize_only),
     )
+    if not pairwise.is_complete:
+        progress_json = os.path.join(run_dir, f"pairwise_progress_{tag}.json")
+        with open(progress_json, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "status": "partial",
+                    "train_dataset": train_dataset,
+                    "epoch": epoch,
+                    "feature_method": feature_method,
+                    "oracle_mode_requested": oracle_mode_requested,
+                    "oracle_mode_used": oracle_mode_used,
+                    "pair_shard_count": pair_shard_count,
+                    "pair_shard_index": pair_shard_index,
+                    "finalize_only": finalize_only,
+                    "available_pairs": pairwise.available_pairs,
+                    "total_pairs": pairwise.total_pairs,
+                    "submitted_pairs_this_run": pairwise.submitted_pairs,
+                    "failed_pairs_count": len(pairwise.failed_pairs),
+                    "pairwise_dir": pairwise.pairwise_dir,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        return {
+            "status": "partial",
+            "train_dataset": train_dataset,
+            "epoch": epoch,
+            "feature_method": feature_method,
+            "oracle_mode_requested": oracle_mode_requested,
+            "oracle_mode_used": oracle_mode_used,
+            "available_pairs": pairwise.available_pairs,
+            "total_pairs": pairwise.total_pairs,
+            "submitted_pairs": pairwise.submitted_pairs,
+            "progress_json": os.path.abspath(progress_json),
+        }
+
     if pairwise.matrix is None:
         reason = write_unavailable_note(
             os.path.join(run_dir, "unavailable_raw_rewrite.json"),
@@ -350,7 +401,6 @@ def run_one_combo(
         return {"status": "failed", "reason_file": os.path.abspath(reason), "train_dataset": train_dataset, "epoch": epoch, "feature_method": feature_method}
 
     K = pairwise.matrix
-    tag = f"{train_dataset}_{epoch}_{feature_method}_{oracle_mode_requested}_raw_rewrite"
     matrix_bundle = save_matrix_bundle(
         output_dir=run_dir,
         tag=tag,
@@ -368,6 +418,11 @@ def run_one_combo(
             "pair_mapping_key": mapping_key,
             "train_data_path": train_data_path,
             "oracle_lora_path": oracle_lora_path,
+            "pair_shard_count": pair_shard_count,
+            "pair_shard_index": pair_shard_index,
+            "finalize_only": finalize_only,
+            "available_pairs": pairwise.available_pairs,
+            "total_pairs": pairwise.total_pairs,
         },
     )
     coord_bundle = save_coordinate_bundle(
@@ -488,6 +543,8 @@ def run_one_combo(
         "A_leak": A_leak,
         "style_trace": style_stats.get("trace"),
         "style_top_eig": style_stats.get("top_eig_real"),
+        "available_pairs": pairwise.available_pairs,
+        "total_pairs": pairwise.total_pairs,
         "summary_json": os.path.abspath(summary_json),
         "pair_metrics_csv": os.path.abspath(pair_csv),
     }
@@ -512,6 +569,9 @@ def main() -> None:
     p.add_argument("--num_workers", type=int, default=0, help="<=0 表示自动按 GPU 数量并行")
     p.add_argument("--gpu_ids", type=str, default="", help="逗号分隔，如 0,1,2,3")
     p.add_argument("--pair_timeout_sec", type=int, default=0, help="单个 pair 超时秒数，<=0 表示不限")
+    p.add_argument("--pair_shard_count", type=int, default=1, help="pair 分片总数")
+    p.add_argument("--pair_shard_index", type=int, default=0, help="当前 pair 分片编号（0-based）")
+    p.add_argument("--finalize_only", action="store_true", help="只从 existing pairwise_result 汇总，不再计算新 pair")
     p.add_argument("--output_root", type=str, default=None)
     p.add_argument("--k_angles", type=int, default=8)
     args = p.parse_args()
@@ -529,6 +589,10 @@ def main() -> None:
     gpu_ids = [x.strip() for x in args.gpu_ids.split(",") if x.strip()]
     max_workers = None if args.num_workers <= 0 else args.num_workers
     pair_timeout_sec = None if args.pair_timeout_sec <= 0 else args.pair_timeout_sec
+    pair_shard_count = max(1, int(args.pair_shard_count))
+    pair_shard_index = int(args.pair_shard_index)
+    if pair_shard_index < 0 or pair_shard_index >= pair_shard_count:
+        raise ValueError(f"pair_shard_index must be in [0, {pair_shard_count - 1}], got {pair_shard_index}")
 
     rows: List[Dict[str, object]] = []
     for train_dataset in train_datasets:
@@ -553,6 +617,9 @@ def main() -> None:
                     max_workers=max_workers,
                     gpu_ids=gpu_ids,
                     pair_timeout_sec=pair_timeout_sec,
+                    pair_shard_count=pair_shard_count,
+                    pair_shard_index=pair_shard_index,
+                    finalize_only=args.finalize_only,
                 )
                 rows.append(row)
                 if row.get("summary_json"):

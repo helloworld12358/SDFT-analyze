@@ -40,6 +40,9 @@
 - `SCHEMEA_GPU_IDS`：并行 pair 任务可用 GPU 列表（例如 `0,1,2,3`）
 - `SCHEMEA_PAIRWISE_WORKERS`：pair 并行工作进程数（`0` 表示自动按 GPU 数）
 - `SCHEMEA_PAIR_TIMEOUT_SEC`：单个 pair 超时（秒，`0` 不限）
+- `SCHEMEA_PAIR_SHARD_COUNT`：pair 分片总数（默认 `1`，可用于跨多台机器拆分）
+- `SCHEMEA_PAIR_SHARD_INDEX`：当前机器/任务负责的分片编号（`0..count-1`）
+- `SCHEMEA_FINALIZE_ONLY`：设为 `1` 时只做汇总，不再计算新 pair（用于所有分片完成后的收尾）
 
 示例：
 ```bash
@@ -47,13 +50,16 @@ export SCHEMEA_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-C
 export SCHEMEA_EXISTING_RESULT_ROOTS=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf/result
 export SCHEMEA_GPU_IDS=0,1,2,3
 export SCHEMEA_PAIRWISE_WORKERS=4
+export SCHEMEA_PAIR_SHARD_COUNT=1
+export SCHEMEA_PAIR_SHARD_INDEX=0
+export SCHEMEA_FINALIZE_ONLY=0
 ```
 
 ## 5. 建议提交顺序
 1. `run_schemeA_ownH_collect.sh`
 2. `run_schemeA_crossH_epoch0.sh` / `run_schemeA_crossH_epoch1.sh` / `run_schemeA_crossH_epoch5.sh`（并行）
 3. `run_schemeA_mixedH_epoch0.sh` / `run_schemeA_mixedH_epoch1.sh` / `run_schemeA_mixedH_epoch5.sh`（并行）
-4. `run_schemeA_raw_rewrite_epoch5_gsm8k.sh` / `run_schemeA_raw_rewrite_epoch5_openfunction.sh` / `run_schemeA_raw_rewrite_epoch5_magicoder.sh` / `run_schemeA_raw_rewrite_epoch5_alpaca.sh` / `run_schemeA_raw_rewrite_epoch5_dolly.sh` / `run_schemeA_raw_rewrite_epoch5_lima.sh` / `run_schemeA_raw_rewrite_epoch5_openhermes.sh`（可并行）
+4. `run_schemeA_raw_rewrite_epoch5_gsm8k.sh` / `run_schemeA_raw_rewrite_epoch5_openfunction.sh` / `run_schemeA_raw_rewrite_epoch5_magicoder.sh` / `run_schemeA_raw_rewrite_epoch5_alpaca.sh` / `run_schemeA_raw_rewrite_epoch5_dolly.sh` / `run_schemeA_raw_rewrite_epoch5_lima.sh` / `run_schemeA_raw_rewrite_epoch5_openhermes.sh`（可并行；若需再拆分可设置 `SCHEMEA_PAIR_SHARD_COUNT/INDEX`）
 5. `run_schemeA_score_bridge.sh`
 6. `run_schemeA_recover_all.sh`
 7. `run_schemeA_final_summary.sh`

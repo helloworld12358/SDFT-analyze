@@ -740,6 +740,38 @@ class PairwiseRunResult:
     pairwise_dir: str
     missing_grad_paths: List[str]
     failed_pairs: List[Dict[str, str]]
+    submitted_pairs: int
+    available_pairs: int
+    total_pairs: int
+    is_complete: bool
+
+
+def _pair_score_from_candidates(pairwise_dir: str, names: Sequence[str], i: int, j: int) -> Optional[float]:
+    candidates = [
+        os.path.join(pairwise_dir, f"sim_{names[i]}_{names[j]}.json"),
+        os.path.join(pairwise_dir, f"sim_{names[j]}_{names[i]}.json"),
+        os.path.join(pairwise_dir, f"sim_{i}_{j}.json"),
+        os.path.join(pairwise_dir, f"sim_{j}_{i}.json"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            score = _load_json_score(p)
+            if score is not None:
+                return score
+    return None
+
+
+def count_available_pairwise_scores(pairwise_dir: str, names: Sequence[str]) -> Tuple[int, int]:
+    n = len(names)
+    total = n * (n + 1) // 2
+    if not os.path.isdir(pairwise_dir):
+        return 0, total
+    available = 0
+    for i in range(n):
+        for j in range(i, n):
+            if _pair_score_from_candidates(pairwise_dir, names, i, j) is not None:
+                available += 1
+    return available, total
 
 
 def compute_pairwise_scores_via_cli(
@@ -755,6 +787,9 @@ def compute_pairwise_scores_via_cli(
     max_workers: Optional[int] = None,
     gpu_ids: Optional[Sequence[str]] = None,
     pair_timeout_sec: Optional[int] = None,
+    pair_shard_count: int = 1,
+    pair_shard_index: int = 0,
+    run_missing_pairs: bool = True,
 ) -> PairwiseRunResult:
     ensure_dir(output_dir)
     pairwise_dir = ensure_dir(os.path.join(output_dir, "pairwise_result"))
@@ -767,14 +802,24 @@ def compute_pairwise_scores_via_cli(
         if not p or (not os.path.isfile(p)):
             missing.append(p or f"(missing mapping for {n})")
 
-    pair_jobs: List[Tuple[str, str, str]] = []
+    all_pair_jobs: List[Tuple[str, str, str]] = []
     for i, a in enumerate(dataset_names):
         for j in range(i, len(dataset_names)):
             b = dataset_names[j]
             out_json = os.path.join(pairwise_dir, f"sim_{a}_{b}.json")
             if os.path.isfile(out_json):
                 continue
-            pair_jobs.append((a, b, out_json))
+            all_pair_jobs.append((a, b, out_json))
+
+    shard_count = max(1, int(pair_shard_count))
+    shard_index = int(pair_shard_index)
+    if shard_index < 0 or shard_index >= shard_count:
+        raise ValueError(f"pair_shard_index must be in [0, {shard_count - 1}], got {shard_index}")
+
+    if shard_count > 1:
+        pair_jobs = [job for idx, job in enumerate(all_pair_jobs) if (idx % shard_count) == shard_index]
+    else:
+        pair_jobs = list(all_pair_jobs)
 
     gpu_list: List[str] = []
     if gpu_ids:
@@ -793,7 +838,7 @@ def compute_pairwise_scores_via_cli(
     max_workers_eff = max(1, max_workers_eff)
 
     failed_pairs: List[Dict[str, str]] = []
-    if not missing and pair_jobs:
+    if run_missing_pairs and (not missing) and pair_jobs:
         if max_workers_eff <= 1:
             for idx, (a, b, out_json) in enumerate(pair_jobs):
                 env_overrides = {"TOKENIZERS_PARALLELISM": "false"}
@@ -846,7 +891,17 @@ def compute_pairwise_scores_via_cli(
                         failed_pairs.append({"pair": f"{a}|{b}", "message": str(msg)[:2000]})
 
     K = matrix_from_pairwise_json(pairwise_dir, dataset_names)
-    return PairwiseRunResult(matrix=K, pairwise_dir=pairwise_dir, missing_grad_paths=missing, failed_pairs=failed_pairs)
+    available_pairs, total_pairs = count_available_pairwise_scores(pairwise_dir, dataset_names)
+    return PairwiseRunResult(
+        matrix=K,
+        pairwise_dir=pairwise_dir,
+        missing_grad_paths=missing,
+        failed_pairs=failed_pairs,
+        submitted_pairs=len(pair_jobs),
+        available_pairs=available_pairs,
+        total_pairs=total_pairs,
+        is_complete=(available_pairs >= total_pairs),
+    )
 
 
 def write_unavailable_note(path: str, reason: str, context: Optional[Dict[str, object]] = None) -> str:
