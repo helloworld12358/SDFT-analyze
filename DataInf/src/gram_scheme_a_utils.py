@@ -31,7 +31,29 @@ DEFAULT_METHODS: List[str] = ["sft", "sdft"]
 DEFAULT_TASKS: List[str] = ["alpaca_eval", "gsm8k", "humaneval", "multiarith", "openfunction"]
 
 _FLOAT_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
-_SHAPE_RE = re.compile(r"shape\s*:\s*\((\d+)\s*,\s*(\d+)\)", re.IGNORECASE)
+# Compatible with:
+#   shape: (5, 5)
+#   shape = (5,5)
+#   shape：(5，5)
+_SHAPE_RE = re.compile(
+    r"shape\s*[:=：]\s*[（(]\s*(\d+)\s*[,，]\s*(\d+)\s*[)）]",
+    re.IGNORECASE,
+)
+
+
+def _normalize_header_text(s: str) -> str:
+    return (
+        s.strip()
+        .lower()
+        .replace("＝", "=")
+        .replace("—", "-")
+        .replace("－", "-")
+    )
+
+
+def _is_section_header_line(s: str) -> bool:
+    low = _normalize_header_text(s)
+    return low.startswith("===") or low.startswith("---")
 
 
 def ensure_dir(path: str) -> str:
@@ -276,7 +298,7 @@ def _parse_matrix_after_shape(lines: Sequence[str], shape_idx: int) -> Tuple[Opt
         if not s:
             i += 1
             continue
-        if s.startswith("==="):
+        if _is_section_header_line(s):
             break
         vals = _extract_floats(lines[i])
         if len(vals) >= ncol:
@@ -288,8 +310,8 @@ def _parse_matrix_after_shape(lines: Sequence[str], shape_idx: int) -> Tuple[Opt
 
 
 def _section_to_method(line: str) -> Optional[str]:
-    low = line.strip().lower()
-    if not low.startswith("==="):
+    low = _normalize_header_text(line)
+    if not _is_section_header_line(low):
         return None
     if "diff" in low:
         return None
