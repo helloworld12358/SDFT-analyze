@@ -222,10 +222,50 @@ def main() -> None:
     summary_csv = os.path.join(output_root, "crossH_summary.csv")
     summary_json = os.path.join(output_root, "crossH_summary.json")
     summary_txt = os.path.join(output_root, "crossH_summary.txt")
-    write_rows_csv(summary_csv, rows)
-    write_rows_txt(summary_txt, rows, max_cols=18)
+
+    # Merge with existing summary so epoch-specific runs don't overwrite each other.
+    merged: Dict[Tuple[str, str, str, str], Dict[str, object]] = {}
+    if os.path.isfile(summary_json):
+        try:
+            with open(summary_json, "r", encoding="utf-8") as f:
+                old = json.load(f)
+            if isinstance(old, list):
+                for r in old:
+                    if not isinstance(r, dict):
+                        continue
+                    k = (
+                        str(r.get("train_dataset")),
+                        str(r.get("epoch")),
+                        str(r.get("target_method")),
+                        str(r.get("oracle_method")),
+                    )
+                    merged[k] = r
+        except Exception:
+            pass
+
+    for r in rows:
+        k = (
+            str(r.get("train_dataset")),
+            str(r.get("epoch")),
+            str(r.get("target_method")),
+            str(r.get("oracle_method")),
+        )
+        merged[k] = r
+
+    merged_rows = sorted(
+        merged.values(),
+        key=lambda x: (
+            str(x.get("train_dataset")),
+            str(x.get("epoch")),
+            str(x.get("target_method")),
+            str(x.get("oracle_method")),
+        ),
+    )
+
+    write_rows_csv(summary_csv, merged_rows)
+    write_rows_txt(summary_txt, merged_rows, max_cols=18)
     with open(summary_json, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
+        json.dump(merged_rows, f, ensure_ascii=False, indent=2)
 
     print(os.path.abspath(summary_csv))
     print(os.path.abspath(summary_json))

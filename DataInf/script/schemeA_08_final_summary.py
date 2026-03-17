@@ -56,6 +56,16 @@ def _key(train_dataset: str, epoch: str, method: str, h_mode: str) -> Tuple[str,
     return train_dataset, epoch, method, h_mode
 
 
+def _normalize_score_h_mode(h_mode: str) -> str:
+    # score bridge historically emits oracle_sft/oracle_sdft
+    # while per-method summary rows use cross_oracle_* naming.
+    if h_mode == "oracle_sft":
+        return "cross_oracle_sft"
+    if h_mode == "oracle_sdft":
+        return "cross_oracle_sdft"
+    return h_mode
+
+
 def _load_raw_rewrite_rows(raw_rewrite_root: str) -> List[Dict[str, object]]:
     out: List[Dict[str, object]] = []
     for p in glob.glob(os.path.join(raw_rewrite_root, "**", "raw_rewrite_summary_*.json"), recursive=True):
@@ -197,7 +207,8 @@ def main() -> None:
     for r in score_rows:
         if r.get("status") != "ok":
             continue
-        score_map[(str(r.get("train_dataset")), str(r.get("epoch")), str(r.get("h_mode")))] = {
+        score_h_mode = _normalize_score_h_mode(str(r.get("h_mode")))
+        score_map[(str(r.get("train_dataset")), str(r.get("epoch")), score_h_mode)] = {
             "score_linear_cka": r.get("score_linear_cka"),
             "score_linear_hsic": r.get("score_linear_hsic"),
             "score_gaussian_hsic": r.get("score_gaussian_hsic"),
