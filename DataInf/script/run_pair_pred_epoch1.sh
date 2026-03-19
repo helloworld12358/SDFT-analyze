@@ -27,7 +27,7 @@ PAIR_PRED_GRID_VALUES="${PAIR_PRED_GRID_VALUES:--2,-1,-0.5,0,0.5,1,2}"
   --alpha "$PAIR_PRED_ALPHA" \
   --beta "$PAIR_PRED_BETA" \
   --gamma "$PAIR_PRED_GAMMA" \
-  --grid_values "$PAIR_PRED_GRID_VALUES"
+  --grid_values="$PAIR_PRED_GRID_VALUES"
 "$PYTHON_BIN" "$SCRIPT_DIR/pair_pred_03_final_summary.py" \
   --datainf_root "$DATAINF_ROOT" \
   --feature_epoch "$PAIR_PRED_FEATURE_EPOCH" \
