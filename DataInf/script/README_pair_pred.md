@@ -37,9 +37,8 @@
     - `true_sign`
 - 主要输出：
   - `pair_features_all.csv/json`
-  - `pair_features_epoch_0.csv/json`
-  - `pair_features_epoch_1.csv/json`
-  - `pair_features_epoch_5.csv/json`
+  - `pair_features_feature_<feature_epoch>.csv/json`
+  - `pair_features_feat_<feature_epoch>__label_<label_epoch>.csv/json`
   - `unavailable_pair_features.json`
 
 3) `pair_pred_02_score_predictor.py`
@@ -55,10 +54,10 @@
   - `Pearson / Spearman`（不可计算时给出原因）
   - `top-k overlap / precision`
 - 主要输出：
-  - `pair_pred_scores_<epoch>.csv/json/txt`
-  - `pair_pred_summary_<epoch>.json`
-  - `pair_pred_by_dataset_<epoch>.csv`
-  - `pair_pred_fit_<epoch>.csv`（仅 `lodo`）
+  - `pair_pred_scores_feat_<feature_epoch>__label_<label_epoch>.csv/json/txt`
+  - `pair_pred_summary_feat_<feature_epoch>__label_<label_epoch>.json`
+  - `pair_pred_by_dataset_feat_<feature_epoch>__label_<label_epoch>.csv`
+  - `pair_pred_fit_feat_<feature_epoch>__label_<label_epoch>.csv`（仅 `lodo`）
 
 4) `pair_pred_03_final_summary.py`
 
@@ -66,10 +65,8 @@
   - 汇总 feature-level 与 predictor-level 结果
   - 汇总 unavailable 列表
 - 主要输出：
-  - `pair_pred_feature_eval.csv`
-  - `pair_pred_summary.csv`
-  - `pair_pred_summary.json`
-  - `pair_pred_summary.md`
+  - `pair_pred_feature_eval_feat_<feature_epoch>__label_<label_epoch>.csv`
+  - `pair_pred_final_summary_feat_<feature_epoch>__label_<label_epoch>.csv/json/md`
 
 ## bash 批量脚本
 
@@ -85,6 +82,20 @@
 cd /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis
 export PAIR_PRED_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
 export PAIR_PRED_PYTHON=/opt/conda/bin/python
+bash DataInf/script/run_pair_pred_epoch1.sh
+```
+
+## 跨 epoch 示例（你关心的场景）
+
+`feature_epoch=epoch_1` 预测 `label_epoch=epoch_5`：
+
+```bash
+cd /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis
+export PAIR_PRED_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
+export PAIR_PRED_PYTHON=/opt/conda/bin/python
+export PAIR_PRED_MODE=grid
+export PAIR_PRED_FEATURE_EPOCH=epoch_1
+export PAIR_PRED_LABEL_EPOCH=epoch_5
 bash DataInf/script/run_pair_pred_epoch1.sh
 ```
 

@@ -268,7 +268,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Pair-level predictor step02 scorer")
     p.add_argument("--datainf_root", type=str, default=None)
     p.add_argument("--output_root", type=str, default=None, help="Default: <result_root>/pair_pred")
+    # Backward-compatible alias: --epoch maps to feature_epoch if --feature_epoch is not given.
     p.add_argument("--epoch", type=str, default="epoch_1")
+    p.add_argument("--feature_epoch", type=str, default="")
+    p.add_argument("--label_epoch", type=str, default="", help="If empty, use same as feature_epoch")
     p.add_argument("--features_json", type=str, default="", help="Default: <output_root>/pair_features_all.json")
     p.add_argument("--mode", type=str, default="manual", choices=["manual", "grid", "lodo"])
     p.add_argument("--alpha", type=float, default=1.0)
@@ -282,18 +285,31 @@ def main() -> None:
     output_root = args.output_root or os.path.join(result_root, "pair_pred")
     os.makedirs(output_root, exist_ok=True)
 
+    feature_epoch = args.feature_epoch.strip() or str(args.epoch).strip() or "epoch_1"
+    label_epoch = args.label_epoch.strip() or feature_epoch
+    epoch_tag = f"feat_{feature_epoch}__label_{label_epoch}"
+
     features_json = args.features_json or os.path.join(output_root, "pair_features_all.json")
     all_rows = _load_json_list(features_json)
-    rows = [r for r in all_rows if str(r.get("epoch")) == str(args.epoch)]
+    rows = []
+    for r in all_rows:
+        fe = str(r.get("feature_epoch", r.get("epoch", "")))
+        le = str(r.get("label_epoch", r.get("true_perf_epoch", fe)))
+        if fe == feature_epoch and le == label_epoch:
+            rows.append(r)
 
     unavailable_dir = os.path.join(output_root, "unavailable")
     os.makedirs(unavailable_dir, exist_ok=True)
 
     if not rows:
         reason = write_unavailable_note(
-            os.path.join(unavailable_dir, f"unavailable_predictor_{args.epoch}.json"),
+            os.path.join(unavailable_dir, f"unavailable_predictor_{epoch_tag}.json"),
             reason="no pair feature rows for target epoch",
-            context={"features_json": os.path.abspath(features_json), "epoch": args.epoch},
+            context={
+                "features_json": os.path.abspath(features_json),
+                "feature_epoch": feature_epoch,
+                "label_epoch": label_epoch,
+            },
         )
         print(os.path.abspath(reason))
         return
@@ -301,9 +317,14 @@ def main() -> None:
     valid_rows = [r for r in rows if _valid_feature_row(r)]
     if len(valid_rows) < 2:
         reason = write_unavailable_note(
-            os.path.join(unavailable_dir, f"unavailable_predictor_{args.epoch}.json"),
+            os.path.join(unavailable_dir, f"unavailable_predictor_{epoch_tag}.json"),
             reason="insufficient valid rows for predictor",
-            context={"epoch_rows": len(rows), "valid_rows": len(valid_rows), "epoch": args.epoch},
+            context={
+                "epoch_rows": len(rows),
+                "valid_rows": len(valid_rows),
+                "feature_epoch": feature_epoch,
+                "label_epoch": label_epoch,
+            },
         )
         print(os.path.abspath(reason))
         return
@@ -342,7 +363,8 @@ def main() -> None:
                 a, b, g, train_stats = _grid_fit(train, grid_values)
             fit_rows.append(
                 {
-                    "epoch": args.epoch,
+                    "feature_epoch": feature_epoch,
+                    "label_epoch": label_epoch,
                     "holdout_train_dataset": holdout_ds,
                     "alpha": a,
                     "beta": b,
@@ -368,7 +390,8 @@ def main() -> None:
     for ds, rr in sorted(ds_groups.items()):
         by_ds_acc.append(
             {
-                "epoch": args.epoch,
+                "feature_epoch": feature_epoch,
+                "label_epoch": label_epoch,
                 "train_dataset": ds,
                 "n_rows": len(rr),
                 "sign_accuracy": _sign_accuracy(rr),
@@ -377,23 +400,25 @@ def main() -> None:
             }
         )
 
-    score_csv = os.path.join(output_root, f"pair_pred_scores_{args.epoch}.csv")
-    score_json = os.path.join(output_root, f"pair_pred_scores_{args.epoch}.json")
-    score_txt = os.path.join(output_root, f"pair_pred_scores_{args.epoch}.txt")
+    score_csv = os.path.join(output_root, f"pair_pred_scores_{epoch_tag}.csv")
+    score_json = os.path.join(output_root, f"pair_pred_scores_{epoch_tag}.json")
+    score_txt = os.path.join(output_root, f"pair_pred_scores_{epoch_tag}.txt")
     write_rows_csv(score_csv, pred_rows)
     write_rows_txt(score_txt, pred_rows, max_cols=22)
     with open(score_json, "w", encoding="utf-8") as f:
         json.dump(pred_rows, f, ensure_ascii=False, indent=2)
 
-    fit_csv = os.path.join(output_root, f"pair_pred_fit_{args.epoch}.csv")
+    fit_csv = os.path.join(output_root, f"pair_pred_fit_{epoch_tag}.csv")
     if fit_rows:
         write_rows_csv(fit_csv, fit_rows)
 
-    byds_csv = os.path.join(output_root, f"pair_pred_by_dataset_{args.epoch}.csv")
+    byds_csv = os.path.join(output_root, f"pair_pred_by_dataset_{epoch_tag}.csv")
     write_rows_csv(byds_csv, by_ds_acc)
 
     summary = {
-        "epoch": args.epoch,
+        "epoch": feature_epoch,  # backward-compatible
+        "feature_epoch": feature_epoch,
+        "label_epoch": label_epoch,
         "mode": args.mode,
         "fit_meta": fit_meta,
         "n_rows_total": len(rows),
@@ -410,7 +435,7 @@ def main() -> None:
             "by_dataset_csv": os.path.abspath(byds_csv),
         },
     }
-    summary_json = os.path.join(output_root, f"pair_pred_summary_{args.epoch}.json")
+    summary_json = os.path.join(output_root, f"pair_pred_summary_{epoch_tag}.json")
     with open(summary_json, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 

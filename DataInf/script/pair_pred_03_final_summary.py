@@ -146,6 +146,8 @@ def _summary_md(payload: Dict[str, object]) -> str:
     lines.append("")
     lines.append(f"- 输出时间: {payload.get('timestamp')}")
     lines.append(f"- 输出目录: `{payload.get('output_root')}`")
+    lines.append(f"- feature_epoch: `{payload.get('feature_epoch')}`")
+    lines.append(f"- label_epoch: `{payload.get('label_epoch')}`")
     lines.append("")
     lines.append("## 文件概览")
     outs = payload.get("outputs", {})
@@ -172,7 +174,8 @@ def _summary_md(payload: Dict[str, object]) -> str:
     pred = payload.get("predictor_summary", {})
     if isinstance(pred, dict) and pred:
         for k in [
-            "epoch",
+            "feature_epoch",
+            "label_epoch",
             "mode",
             "n_rows_total",
             "n_rows_valid_feature_and_label",
@@ -196,11 +199,24 @@ def _summary_md(payload: Dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _filter_feature_rows(rows: Sequence[Dict[str, object]], feature_epoch: str, label_epoch: str) -> List[Dict[str, object]]:
+    out: List[Dict[str, object]] = []
+    for r in rows:
+        fe = str(r.get("feature_epoch", r.get("epoch", "")))
+        le = str(r.get("label_epoch", r.get("true_perf_epoch", fe)))
+        if fe == feature_epoch and le == label_epoch:
+            out.append(r)
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Pair-level predictor step03 final summary")
     p.add_argument("--datainf_root", type=str, default=None)
     p.add_argument("--output_root", type=str, default=None, help="Default: <result_root>/pair_pred")
+    # Backward-compatible alias: --epoch maps to feature_epoch if --feature_epoch absent.
     p.add_argument("--epoch", type=str, default="epoch_1")
+    p.add_argument("--feature_epoch", type=str, default="")
+    p.add_argument("--label_epoch", type=str, default="", help="If empty, use same as feature_epoch")
     p.add_argument("--features_json", type=str, default="")
     p.add_argument("--predictor_summary_json", type=str, default="")
     args = p.parse_args()
@@ -210,15 +226,21 @@ def main() -> None:
     output_root = args.output_root or os.path.join(result_root, "pair_pred")
     os.makedirs(output_root, exist_ok=True)
 
+    feature_epoch = args.feature_epoch.strip() or str(args.epoch).strip() or "epoch_1"
+    label_epoch = args.label_epoch.strip() or feature_epoch
+    epoch_tag = f"feat_{feature_epoch}__label_{label_epoch}"
+
     features_json = args.features_json or os.path.join(output_root, "pair_features_all.json")
-    feature_rows = _load_json_list(features_json)
+    feature_rows_all = _load_json_list(features_json)
+    feature_rows = _filter_feature_rows(feature_rows_all, feature_epoch, label_epoch)
+
     feat_eval_rows: List[Dict[str, object]] = []
     for feature_col in ["DeltaCent", "DeltaLoad", "DeltaSelf"]:
         feat_eval_rows.append(_feature_eval(feature_rows, feature_col))
-    feat_eval_csv = os.path.join(output_root, "pair_pred_feature_eval.csv")
+    feat_eval_csv = os.path.join(output_root, f"pair_pred_feature_eval_{epoch_tag}.csv")
     write_rows_csv(feat_eval_csv, feat_eval_rows)
 
-    pred_summary_json = args.predictor_summary_json or os.path.join(output_root, f"pair_pred_summary_{args.epoch}.json")
+    pred_summary_json = args.predictor_summary_json or os.path.join(output_root, f"pair_pred_summary_{epoch_tag}.json")
     predictor_summary = _load_json(pred_summary_json) if os.path.isfile(pred_summary_json) else {}
 
     unavailable_files = sorted(glob.glob(os.path.join(output_root, "unavailable", "unavailable_*.json")))
@@ -226,7 +248,9 @@ def main() -> None:
     final_payload: Dict[str, object] = {
         "timestamp": np.datetime64("now").astype(str),
         "output_root": os.path.abspath(output_root),
-        "epoch": args.epoch,
+        "epoch": feature_epoch,  # backward-compatible
+        "feature_epoch": feature_epoch,
+        "label_epoch": label_epoch,
         "feature_eval_rows": feat_eval_rows,
         "predictor_summary": predictor_summary,
         "unavailable_files": [os.path.abspath(x) for x in unavailable_files],
@@ -237,9 +261,9 @@ def main() -> None:
         },
     }
 
-    summary_json = os.path.join(output_root, "pair_pred_summary.json")
-    summary_md = os.path.join(output_root, "pair_pred_summary.md")
-    summary_csv = os.path.join(output_root, "pair_pred_summary.csv")
+    summary_json = os.path.join(output_root, f"pair_pred_final_summary_{epoch_tag}.json")
+    summary_md = os.path.join(output_root, f"pair_pred_final_summary_{epoch_tag}.md")
+    summary_csv = os.path.join(output_root, f"pair_pred_final_summary_{epoch_tag}.csv")
 
     with open(summary_json, "w", encoding="utf-8") as f:
         json.dump(final_payload, f, ensure_ascii=False, indent=2)
@@ -248,7 +272,9 @@ def main() -> None:
 
     summary_rows = [
         {
-            "epoch": args.epoch,
+            "epoch": feature_epoch,
+            "feature_epoch": feature_epoch,
+            "label_epoch": label_epoch,
             "predictor_mode": predictor_summary.get("mode") if isinstance(predictor_summary, dict) else None,
             "predictor_sign_accuracy": predictor_summary.get("sign_accuracy") if isinstance(predictor_summary, dict) else None,
             "predictor_pearson": predictor_summary.get("pearson") if isinstance(predictor_summary, dict) else None,
