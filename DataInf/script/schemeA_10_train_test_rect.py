@@ -81,26 +81,6 @@ def _load_json_score(path: str) -> Optional[float]:
         return None
 
 
-def _load_multi_score_map(path: str) -> Dict[str, float]:
-    out: Dict[str, float] = {}
-    if not os.path.isfile(path):
-        return out
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            obj = json.load(f)
-    except Exception:
-        return out
-    if not isinstance(obj, dict):
-        return out
-    score_map = obj.get("score_map", {})
-    if isinstance(score_map, dict):
-        for k, v in score_map.items():
-            fv = _to_float(v)
-            if fv is not None:
-                out[str(k)] = fv
-    return out
-
-
 def _save_json(path: str, obj: object) -> str:
     ensure_dir(os.path.dirname(os.path.abspath(path)))
     with open(path, "w", encoding="utf-8") as f:
@@ -163,54 +143,6 @@ def _run_save_avg_grad(
     if max_samples is not None and max_samples > 0:
         cmd.extend(["--max_samples", str(max_samples)])
 
-    env = os.environ.copy()
-    if env_overrides:
-        env.update({k: str(v) for k, v in env_overrides.items()})
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout_sec)
-        ok = proc.returncode == 0
-        msg = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-        return ok, msg.strip()
-    except subprocess.TimeoutExpired as e:
-        out = (e.stdout or "") if isinstance(e.stdout, str) else ""
-        err = (e.stderr or "") if isinstance(e.stderr, str) else ""
-        return False, f"timeout after {timeout_sec}s\n{out}\n{err}".strip()
-
-
-def _run_calc_dataset_similarity_multi(
-    python_exe: str,
-    multi_script: str,
-    base_model_path: str,
-    train_dataset_path: str,
-    grad1_path: str,
-    grad2_paths: Sequence[str],
-    grad2_names: Sequence[str],
-    out_path: str,
-    lora_path: Optional[str] = None,
-    damping: Optional[float] = None,
-    env_overrides: Optional[Dict[str, str]] = None,
-    timeout_sec: Optional[int] = None,
-) -> Tuple[bool, str]:
-    cmd = [
-        python_exe,
-        multi_script,
-        "--base_model_path",
-        base_model_path,
-        "--train_dataset_path",
-        train_dataset_path,
-        "--grad1_path",
-        grad1_path,
-        "--grad2_paths",
-        ",".join(grad2_paths),
-        "--grad2_names",
-        ",".join(grad2_names),
-        "--out_path",
-        out_path,
-    ]
-    if lora_path:
-        cmd.extend(["--lora_path", lora_path])
-    if damping is not None:
-        cmd.extend(["--damping", str(damping)])
     env = os.environ.copy()
     if env_overrides:
         env.update({k: str(v) for k, v in env_overrides.items()})
@@ -479,32 +411,25 @@ def _compute_one_row(
             unavailable_file=os.path.abspath(reason_file),
         )
 
-    # Multi-target run: one pass for train_self + all test tasks
-    multi_json = os.path.join(pairwise_dir, "sim_trainself_multi.json")
-    multi_score_map = _load_multi_score_map(multi_json)
-    need_keys = ["train_self"] + [f"task::{t}" for t in task_names]
-    if not all(k in multi_score_map for k in need_keys):
-        multi_script = os.path.join(datainf_root, "src", "calc_dataset_similarity_multi.py")
-        grad2_names = ["train_self"] + [f"task::{t}" for t in task_names]
-        grad2_paths = [train_grad_path] + [test_grad_paths[t] for t in task_names]
-        ok, _msg = _run_calc_dataset_similarity_multi(
+    # S_train = sim(train_self, train_self)
+    s_train_json = os.path.join(pairwise_dir, "sim_trainself_trainself.json")
+    s_train = _load_json_score(s_train_json)
+    if s_train is None:
+        ok, msg = run_calc_dataset_similarity_pair(
             python_exe=python_exe,
-            multi_script=multi_script,
+            calc_script=os.path.join(datainf_root, "src", "calc_dataset_similarity.py"),
             base_model_path=base_model_path,
             train_dataset_path=train_dataset_path,
             grad1_path=train_grad_path,
-            grad2_paths=grad2_paths,
-            grad2_names=grad2_names,
-            out_path=multi_json,
+            grad2_path=train_grad_path,
+            out_path=s_train_json,
             lora_path=lora_path,
             damping=damping,
             env_overrides=env_overrides,
             timeout_sec=pair_timeout_sec,
         )
         if ok:
-            multi_score_map = _load_multi_score_map(multi_json)
-
-    s_train = multi_score_map.get("train_self")
+            s_train = _load_json_score(s_train_json)
 
     s_test_map: Dict[str, Optional[float]] = {t: None for t in task_names}
     diag_existing = _diag_from_existing_ownh(
@@ -524,15 +449,10 @@ def _compute_one_row(
     fail_count = 0
 
     for t in task_names:
-        score = multi_score_map.get(f"task::{t}")
-        # fallback to legacy single-pair json if multi output missed this task
+        out_json = os.path.join(pairwise_dir, f"sim_trainself_{t}.json")
+        score = _load_json_score(out_json)
         if score is None:
-            out_json = os.path.join(pairwise_dir, f"sim_trainself_{t}.json")
-            score = _load_json_score(out_json)
-        # final fallback: run single pair once
-        if score is None:
-            out_json = os.path.join(pairwise_dir, f"sim_trainself_{t}.json")
-            ok, _msg = run_calc_dataset_similarity_pair(
+            ok, msg = run_calc_dataset_similarity_pair(
                 python_exe=python_exe,
                 calc_script=os.path.join(datainf_root, "src", "calc_dataset_similarity.py"),
                 base_model_path=base_model_path,
@@ -883,3 +803,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
