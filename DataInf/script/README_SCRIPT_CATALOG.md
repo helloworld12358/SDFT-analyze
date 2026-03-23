@@ -45,7 +45,7 @@ Notes:
 | `run_all_variances.sh` | Launch full `(epoch, method)` variance jobs in multi-GPU batches. | Calls `compute_loss_variance_v2.py`; saves `variance_results_<model>/<model_short>_<epoch>_<method>.txt` under `DataInf/result`. | Can run after checkpoints/data exist; independent from pairwise matrix generation. |
 | `run_pairwise_epoch0_1_5.sh` | Sequentially run direct matrix builder for all models/epochs/methods. | Calls `compute_pairwise_from_grads_tagged_localresults.py`; outputs matrix/eigen files and summary txt (localresults layout). | Alternative pairwise path; requires grad vectors first. |
 | `schemeA_10_train_test_rect.py` | Build rectangular train-vs-test matrices (`7x5`) for SchemeA. | Per `(epoch,method)` outputs `T_train_test_*_7x5` and `C_train_test_*_7x5` (`.npy/.csv/.json`), plus row-level summary files and optional `sft_minus_sdft` diffs. | Reuses existing test-task grads; may optionally compute missing train-self grads. |
-| `run_schemeA_train_test_rect_all_epochs.sh` | One-command launcher for Step10 across all train datasets, all epochs, both methods. | Produces `DataInf/results/schemeA/train_test_rect/...` (or `DataInf/result/...` fallback). | Run after checkpoints and test-task gradients exist. |
+| `run_schemeA_train_test_rect_all_epochs.sh` | Launcher for Step10 with split controls. Defaults: all train datasets + all epochs + both methods; can pass positional args: `<epoch> <method> [train_dataset]`. | Produces `DataInf/results/schemeA/train_test_rect/...` (or `DataInf/result/...` fallback). | Useful for 6-way split by `(epoch,method)` across multiple servers. |
 
 ## Formula notes for complex scripts
 

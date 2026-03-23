@@ -35,7 +35,7 @@
 - `run_all_variances.sh`：批量方差计算。与 pairwise 结果独立。
 - `run_pairwise_epoch0_1_5.sh`：全量顺序调用 `compute_pairwise_from_grads_tagged_localresults.py`。
 - `schemeA_10_train_test_rect.py`：构建训练集-测试集矩形矩阵（`7x5`），输出每个 `(epoch,method)` 的 `T/C`（`.npy/.csv/.json`）及逐行汇总，支持可选 `sft_minus_sdft` 差分。
-- `run_schemeA_train_test_rect_all_epochs.sh`：一键运行上面的 Step10（全训练集、全 epoch、双方法）。
+- `run_schemeA_train_test_rect_all_epochs.sh`：Step10 运行入口；默认“全训练集 + 全 epoch + 双方法”，也支持位置参数 `<epoch> <method> [train_dataset]`，便于多机按 `(epoch,method)` 拆分并行。
 
 ## 四、公式补充
 
