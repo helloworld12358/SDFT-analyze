@@ -38,6 +38,10 @@
 - `run_schemeA_train_test_rect_all_epochs.sh`：Step10 运行入口；默认“全训练集 + 全 epoch + 双方法”，也支持位置参数 `<epoch> <method> [train_dataset]`，便于多机按 `(epoch,method)` 拆分并行。
 - `schemeA_11_train_test_rect_hessian.py`：构建 Hessian（非逆）版本的训练集-测试集矩形矩阵（`7x5`），输出每个 `(epoch,method)` 的 `T/C`（`.npy/.csv/.json`）及逐行汇总，支持可选 `sft_minus_sdft` 差分。
 - `run_schemeA_train_test_rect_hessian_all_epochs.sh`：Step11（Hessian）运行入口；支持位置参数 `<epoch> <method> [train_dataset]`，便于多机按 `(epoch,method)` 拆分并行。
+- `loss_theory_01_forward_collect.py`：仅前向的理论诊断数据采集脚本（`epoch_1/epoch_5`），输出逐样本统计、随机 token 子样本统计、序列探针统计，支持流式读取、分批前向、断点续跑、分片并行。
+- `loss_theory_02..09_*.py`：理论诊断分析脚本组（尾部形状、MGF、经验 Bernstein 覆盖、稳健均值、条件分析、长度归一化对照、依赖性、最终报告）。
+- `run_loss_theory_collect_shard.sh`：前向采集分片运行入口（适合多机并行）。
+- `run_loss_theory_analyze.sh`：分析脚本顺序运行入口（`02` 到 `09`）。
 
 ## 四、公式补充
 
