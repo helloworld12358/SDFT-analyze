@@ -15,6 +15,6 @@ echo "[loss_theory_analyze] datainf_root=${DATAINF_ROOT}"
 "$PYTHON_BIN" "$SCRIPT_DIR/loss_theory_07_len_ablation.py" --datainf_root "$DATAINF_ROOT"
 "$PYTHON_BIN" "$SCRIPT_DIR/loss_theory_08_dependence.py" --datainf_root "$DATAINF_ROOT"
 "$PYTHON_BIN" "$SCRIPT_DIR/loss_theory_09_final_report.py" --datainf_root "$DATAINF_ROOT"
+"$PYTHON_BIN" "$SCRIPT_DIR/loss_theory_10_combo_matrix_tables.py" --datainf_root "$DATAINF_ROOT"
 
 echo "[loss_theory_analyze] done"
-

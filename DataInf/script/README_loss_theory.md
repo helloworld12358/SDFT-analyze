@@ -28,6 +28,13 @@ This suite runs theory-oriented diagnostics using only frozen-LLM forward passes
 - `loss_theory_07_len_ablation.py`
 - `loss_theory_08_dependence.py`
 - `loss_theory_09_final_report.py`
+- `loss_theory_10_combo_matrix_tables.py`
+  - Build combo-level tree tables in order: `metric -> epoch -> method`
+  - Each table is `7 (train datasets) x 5 (tasks)`
+  - Outputs:
+    - `analysis/combo_matrix/combo_metric_long.csv|json`
+    - `analysis/combo_matrix/combo_metric_tree_tables.json|txt`
+    - `analysis/combo_matrix/unavailable_combo_metric_tables.json`
 
 ## Run on 7 machines
 
@@ -67,4 +74,4 @@ Key artifacts:
 - `analysis/len_ablation/*`
 - `analysis/dependence/*`
 - `analysis/final_report/loss_theory_final_report.json|md`
-
+- `analysis/combo_matrix/combo_metric_tree_tables.txt|json`
