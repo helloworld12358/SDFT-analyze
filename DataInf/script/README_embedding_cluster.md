@@ -23,6 +23,7 @@
 - `run_embedding_cluster_stage2_select_layers.sh`
 - `run_embedding_cluster_stage3_tsne.sh`
 - `run_embedding_cluster_pipeline.sh`（按 `EMBED_CLUSTER_PHASE` 调度）
+- `run_embedding_cluster_7nodes_shared_auto.sh`（7 台共享存储全自动总控，推荐）
 
 ## 建议执行顺序
 
@@ -80,6 +81,41 @@ export EMBED_CLUSTER_INCLUDE_BASE=1
 bash DataInf/script/run_embedding_cluster_stage3_tsne.sh
 ```
 
+## 一次挂起到跑完（7台共享存储自动协同）
+
+这个模式下，每台机器都跑同一个脚本，只改 `EMBED_CLUSTER_WORKER_ID` 即可。  
+脚本会自动做：
+- stage1 分片跑
+- 等待其他机器
+- 仅一台机器自动执行 stage2
+- 等待 stage2 完成
+- stage3 分片跑
+- 最终等待全部完成
+
+每台机器执行（示例 worker 0）：
+
+```bash
+cd /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis
+export EMBED_CLUSTER_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
+export EMBED_CLUSTER_PYTHON=/opt/conda/bin/python
+export EMBED_CLUSTER_DEVICE=auto
+export EMBED_CLUSTER_WORKER_ID=0   # 0~6，每台不同
+export EMBED_CLUSTER_NUM_WORKERS=7
+bash DataInf/script/run_embedding_cluster_7nodes_shared_auto.sh
+```
+
+建议 7 台对应：
+- 机器1: `EMBED_CLUSTER_WORKER_ID=0`
+- 机器2: `EMBED_CLUSTER_WORKER_ID=1`
+- 机器3: `EMBED_CLUSTER_WORKER_ID=2`
+- 机器4: `EMBED_CLUSTER_WORKER_ID=3`
+- 机器5: `EMBED_CLUSTER_WORKER_ID=4`
+- 机器6: `EMBED_CLUSTER_WORKER_ID=5`
+- 机器7: `EMBED_CLUSTER_WORKER_ID=6`
+
+协同状态文件在：
+- `DataInf/results/embedding_cluster/_coord/`
+
 ## 重要参数
 
 - `EMBED_CLUSTER_DEVICE=auto`
@@ -104,4 +140,3 @@ bash DataInf/script/run_embedding_cluster_stage3_tsne.sh
 - `stage2/recommended_layers.json`
 - `stage3/story_tsne_summary_all.csv`
 - `stage3/by_train_dataset/<train_dataset>/tsne_plot_*.png`
-
