@@ -25,6 +25,7 @@
 - `run_embedding_cluster_pipeline.sh`（按 `EMBED_CLUSTER_PHASE` 调度）
 - `run_embedding_cluster_7nodes_shared_auto.sh`（7 台共享存储全自动总控，推荐）
 - `run_embedding_cluster_single_node_4gpu.sh`（单机4卡自动并行）
+- `run_embedding_cluster_single_node_4gpu_no_multiarith.sh`（单机4卡，固定4测试集：去掉 multiarith）
 
 ## 建议执行顺序
 
@@ -163,3 +164,24 @@ bash DataInf/script/run_embedding_cluster_single_node_4gpu.sh
 
 日志：
 - `DataInf/results/embedding_cluster/_coord/local_worker*.log`
+
+## 单机4GPU重跑“4测试集（去掉multiarith）”
+
+这个脚本会固定使用：
+- `alpaca_eval,gsm8k,humaneval,openfunction`
+
+默认输出目录是：
+- `DataInf/results/embedding_cluster_4tasks_no_multiarith`
+
+这样不会覆盖你之前 5 测试集的结果目录（`DataInf/results/embedding_cluster`）。
+
+```bash
+cd /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis
+export EMBED_CLUSTER_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
+export EMBED_CLUSTER_PYTHON=/opt/conda/bin/python
+export EMBED_CLUSTER_LOCAL_GPUS=0,1,2,3
+export EMBED_CLUSTER_NUM_WORKERS=4
+export EMBED_CLUSTER_BATCH_SIZE=0
+export EMBED_CLUSTER_SEED=42
+bash DataInf/script/run_embedding_cluster_single_node_4gpu_no_multiarith.sh
+```
