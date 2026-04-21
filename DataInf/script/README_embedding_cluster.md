@@ -24,6 +24,7 @@
 - `run_embedding_cluster_stage3_tsne.sh`
 - `run_embedding_cluster_pipeline.sh`（按 `EMBED_CLUSTER_PHASE` 调度）
 - `run_embedding_cluster_7nodes_shared_auto.sh`（7 台共享存储全自动总控，推荐）
+- `run_embedding_cluster_single_node_4gpu.sh`（单机4卡自动并行）
 
 ## 建议执行顺序
 
@@ -42,7 +43,7 @@ export EMBED_CLUSTER_PYTHON=/opt/conda/bin/python
 export EMBED_CLUSTER_DEVICE=auto
 export EMBED_CLUSTER_SAMPLES_PER_TASK=100
 export EMBED_CLUSTER_SEED=42
-export EMBED_CLUSTER_BATCH_SIZE=8
+export EMBED_CLUSTER_BATCH_SIZE=0   # 0=自动探测最大安全 batch（推荐）
 ```
 
 ### 阶段 1（7 台并行）
@@ -128,6 +129,11 @@ bash DataInf/script/run_embedding_cluster_7nodes_shared_auto.sh
   - 阶段 2 选层数，阶段 3（未手工指定层时）读取同数量推荐层
 - `EMBED_CLUSTER_MAX_LENGTH`
   - 默认 `1024`。如果你想更保守防 OOM，可调小。
+- `EMBED_CLUSTER_BATCH_SIZE`
+  - 默认 `0`，表示自动探测当前模型/设备下的最大安全 batch，优先提高 GPU 吞吐。
+  - 如果你要固定批大小，可设为正整数（例如 `8`）。
+- `EMBED_CLUSTER_MAX_PROBE_BATCH`
+  - 自动探测上限，默认 `256`。
 
 ## 输出目录
 
@@ -140,3 +146,20 @@ bash DataInf/script/run_embedding_cluster_7nodes_shared_auto.sh
 - `stage2/recommended_layers.json`
 - `stage3/story_tsne_summary_all.csv`
 - `stage3/by_train_dataset/<train_dataset>/tsne_plot_*.png`
+
+## 单机 4GPU 一键并行（只有一台有卡时推荐）
+
+如果只有一台机器拿到了 4 张卡，可以直接：
+
+```bash
+cd /inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis
+export EMBED_CLUSTER_DATAINF_ROOT=/inspire/hdd/project/continuinglearinginlm/weiyuqi-CZXS25110007/SDFT-analysis/DataInf
+export EMBED_CLUSTER_PYTHON=/opt/conda/bin/python
+export EMBED_CLUSTER_LOCAL_GPUS=0,1,2,3
+export EMBED_CLUSTER_NUM_WORKERS=4
+export EMBED_CLUSTER_BATCH_SIZE=0
+bash DataInf/script/run_embedding_cluster_single_node_4gpu.sh
+```
+
+日志：
+- `DataInf/results/embedding_cluster/_coord/local_worker*.log`

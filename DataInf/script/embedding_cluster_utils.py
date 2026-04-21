@@ -97,6 +97,29 @@ def resolve_model_input_device(model: torch.nn.Module, preferred_device: str) ->
     return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+def configure_torch_runtime_for_speed(device: str) -> None:
+    dev = (device or "").strip().lower()
+    use_cuda = dev.startswith("cuda") or (dev == "auto" and torch.cuda.is_available())
+    if not use_cuda:
+        return
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+    except Exception:
+        pass
+    try:
+        torch.backends.cudnn.allow_tf32 = True
+    except Exception:
+        pass
+    try:
+        torch.backends.cudnn.benchmark = True
+    except Exception:
+        pass
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
+
+
 def smart_parse_example(example: Dict[str, object]) -> Tuple[str, str]:
     keys = set(example.keys())
     if "instruction" in keys and "output" in keys:
@@ -257,6 +280,7 @@ def load_model_with_optional_lora(
     device: str,
     prefer_auto_on_fail: bool = True,
 ) -> Tuple[Optional[torch.nn.Module], Optional[str]]:
+    configure_torch_runtime_for_speed(device)
     dtype = choose_dtype(device)
     dev = (device or "").strip().lower()
     if dev == "auto":
@@ -347,6 +371,111 @@ def parse_layers_spec(layers_spec: str, n_layers: int) -> List[int]:
     return vals
 
 
+def _is_cuda_oom_error(err: BaseException) -> bool:
+    s = str(err).lower()
+    return ("out of memory" in s) or ("cuda oom" in s) or ("cublas_status_alloc_failed" in s)
+
+
+def _pick_probe_text(tokenizer: AutoTokenizer, texts: Sequence[str], max_length: int) -> str:
+    if not texts:
+        return "Hello world"
+    cand = list(texts[: min(64, len(texts))])
+    best = cand[0]
+    best_len = -1
+    for t in cand:
+        try:
+            ids = tokenizer(
+                t,
+                truncation=(max_length > 0),
+                max_length=max_length if max_length > 0 else None,
+                add_special_tokens=True,
+            )["input_ids"]
+            l = len(ids)
+        except Exception:
+            l = len(t)
+        if l > best_len:
+            best_len = l
+            best = t
+    return best
+
+
+def auto_probe_batch_size(
+    model: torch.nn.Module,
+    tokenizer: AutoTokenizer,
+    texts: Sequence[str],
+    device: str,
+    max_length: int,
+    start_batch: int = 8,
+    max_probe_batch: int = 256,
+) -> int:
+    in_dev = resolve_model_input_device(model, device)
+    if in_dev.type != "cuda":
+        return max(1, start_batch)
+
+    probe_text = _pick_probe_text(tokenizer, texts, max_length)
+
+    def _try(bs: int) -> bool:
+        batch = [probe_text] * int(bs)
+        try:
+            enc = tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=(max_length > 0),
+                max_length=max_length if max_length > 0 else None,
+            )
+            input_ids = enc["input_ids"].to(in_dev)
+            attn = enc["attention_mask"].to(in_dev)
+            with torch.inference_mode():
+                _ = model(
+                    input_ids=input_ids,
+                    attention_mask=attn,
+                    output_hidden_states=False,
+                    use_cache=False,
+                )
+            del input_ids, attn, enc, batch
+            torch.cuda.synchronize(device=in_dev)
+            return True
+        except RuntimeError as e:
+            if _is_cuda_oom_error(e):
+                torch.cuda.empty_cache()
+                return False
+            raise
+
+    low = 1
+    high_fail = 0
+    cur = max(1, int(start_batch))
+    cur = min(cur, int(max_probe_batch))
+
+    if _try(cur):
+        low = cur
+        while low < max_probe_batch:
+            nxt = min(max_probe_batch, low * 2)
+            if nxt == low:
+                break
+            if _try(nxt):
+                low = nxt
+            else:
+                high_fail = nxt
+                break
+    else:
+        high_fail = cur
+
+    if high_fail == 0:
+        return low
+
+    l, r = low, high_fail - 1
+    best = max(1, l)
+    while l <= r:
+        mid = (l + r) // 2
+        if _try(mid):
+            best = mid
+            l = mid + 1
+        else:
+            r = mid - 1
+    return max(1, best)
+
+
 def extract_last_token_representations(
     model: torch.nn.Module,
     tokenizer: AutoTokenizer,
@@ -355,38 +484,65 @@ def extract_last_token_representations(
     batch_size: int,
     device: str,
     max_length: int,
+    auto_tune_batch: bool = True,
+    max_probe_batch: int = 256,
 ) -> Dict[int, np.ndarray]:
     in_dev = resolve_model_input_device(model, device)
-    out_by_layer: Dict[int, List[np.ndarray]] = {int(l): [] for l in layers}
-    for st in range(0, len(texts), batch_size):
-        batch = list(texts[st : st + batch_size])
-        enc = tokenizer(
-            batch,
-            return_tensors="pt",
-            padding=True,
-            truncation=(max_length > 0),
-            max_length=max_length if max_length > 0 else None,
-        )
-        input_ids = enc["input_ids"].to(in_dev)
-        attn = enc["attention_mask"].to(in_dev)
-        with torch.no_grad():
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attn,
-                output_hidden_states=True,
-                use_cache=False,
+    eff_batch = max(1, int(batch_size))
+    if auto_tune_batch or int(batch_size) <= 0:
+        start_bs = max(1, int(batch_size)) if int(batch_size) > 0 else 8
+        try:
+            eff_batch = auto_probe_batch_size(
+                model=model,
+                tokenizer=tokenizer,
+                texts=texts,
+                device=device,
+                max_length=max_length,
+                start_batch=start_bs,
+                max_probe_batch=max_probe_batch,
             )
-        hs = outputs.hidden_states  # tuple: [emb, layer1, ... layerN]
-        last_idx = torch.clamp(attn.sum(dim=1) - 1, min=0).long()
-        for l in layers:
-            h = hs[int(l)]  # [B,T,H]
-            bsz = h.shape[0]
-            picked = h[torch.arange(bsz, device=h.device), last_idx, :]
-            out_by_layer[int(l)].append(picked.detach().to(dtype=torch.float32, device="cpu").numpy())
+        except Exception:
+            eff_batch = start_bs
 
-        del outputs, hs, input_ids, attn
-        if should_clear_cuda_cache(device):
-            torch.cuda.empty_cache()
+    out_by_layer: Dict[int, List[np.ndarray]] = {int(l): [] for l in layers}
+    st = 0
+    while st < len(texts):
+        cur_bs = min(eff_batch, len(texts) - st)
+        try:
+            batch = list(texts[st : st + cur_bs])
+            enc = tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=(max_length > 0),
+                max_length=max_length if max_length > 0 else None,
+            )
+            input_ids = enc["input_ids"].to(in_dev)
+            attn = enc["attention_mask"].to(in_dev)
+            with torch.inference_mode():
+                outputs = model(
+                    input_ids=input_ids,
+                    attention_mask=attn,
+                    output_hidden_states=True,
+                    use_cache=False,
+                )
+            hs = outputs.hidden_states  # tuple: [emb, layer1, ... layerN]
+            last_idx = torch.clamp(attn.sum(dim=1) - 1, min=0).long()
+            for l in layers:
+                h = hs[int(l)]  # [B,T,H]
+                bsz = h.shape[0]
+                picked = h[torch.arange(bsz, device=h.device), last_idx, :]
+                out_by_layer[int(l)].append(picked.detach().to(dtype=torch.float32, device="cpu").numpy())
+
+            del outputs, hs, input_ids, attn, enc, batch
+            st += cur_bs
+        except RuntimeError as e:
+            if _is_cuda_oom_error(e) and cur_bs > 1:
+                eff_batch = max(1, cur_bs // 2)
+                if should_clear_cuda_cache(device):
+                    torch.cuda.empty_cache()
+                continue
+            raise
 
     return {k: np.concatenate(v, axis=0) if v else np.zeros((0, 0), dtype=np.float32) for k, v in out_by_layer.items()}
 

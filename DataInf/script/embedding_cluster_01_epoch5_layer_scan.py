@@ -43,8 +43,10 @@ def main() -> None:
     p.add_argument("--samples_per_task", type=int, default=100)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--layers", type=str, default="all", help="all or e.g. 4,8,12-20,32")
-    p.add_argument("--batch_size", type=int, default=8)
+    p.add_argument("--batch_size", type=int, default=0, help="<=0 means auto probe max safe batch")
     p.add_argument("--max_length", type=int, default=1024)
+    p.add_argument("--max_probe_batch", type=int, default=256)
+    p.add_argument("--disable_auto_tune_batch", action="store_true")
     p.add_argument("--device", type=str, default="", help="default: auto if cuda available else cpu")
     p.add_argument("--prefer_auto_on_fail", action="store_true")
     args = p.parse_args()
@@ -62,8 +64,10 @@ def main() -> None:
         train_datasets = [td] if td else list(DEFAULT_TRAIN_DATASETS)
 
     device = args.device.strip() or ("auto" if torch.cuda.is_available() else "cpu")
-    batch_size = max(1, int(args.batch_size))
+    batch_size = int(args.batch_size)
     max_length = int(args.max_length)
+    max_probe_batch = max(1, int(args.max_probe_batch))
+    auto_tune_batch = not bool(args.disable_auto_tune_batch)
     samples_per_task = max(1, int(args.samples_per_task))
     seed = int(args.seed)
 
@@ -176,6 +180,8 @@ def main() -> None:
                 batch_size=batch_size,
                 device=device,
                 max_length=max_length,
+                auto_tune_batch=auto_tune_batch,
+                max_probe_batch=max_probe_batch,
             )
             del model
             if should_clear_cuda_cache(device):

@@ -12,8 +12,10 @@ SAMPLES_PER_TASK="${EMBED_CLUSTER_SAMPLES_PER_TASK:-100}"
 SEED="${EMBED_CLUSTER_SEED:-42}"
 PLOT_LAYERS="${EMBED_CLUSTER_PLOT_LAYERS:-}"
 TOP_K_LAYERS="${EMBED_CLUSTER_TOP_K_LAYERS:-3}"
-BATCH_SIZE="${EMBED_CLUSTER_BATCH_SIZE:-8}"
+BATCH_SIZE="${EMBED_CLUSTER_BATCH_SIZE:-0}"
 MAX_LENGTH="${EMBED_CLUSTER_MAX_LENGTH:-1024}"
+MAX_PROBE_BATCH="${EMBED_CLUSTER_MAX_PROBE_BATCH:-256}"
+DISABLE_AUTO_TUNE_BATCH="${EMBED_CLUSTER_DISABLE_AUTO_TUNE_BATCH:-0}"
 DEVICE="${EMBED_CLUSTER_DEVICE:-auto}"
 PREFER_AUTO_ON_FAIL="${EMBED_CLUSTER_PREFER_AUTO_ON_FAIL:-1}"
 TSNE_PERPLEXITY="${EMBED_CLUSTER_TSNE_PERPLEXITY:-30}"
@@ -31,6 +33,7 @@ ARGS=(
   --top_k_layers "$TOP_K_LAYERS"
   --batch_size "$BATCH_SIZE"
   --max_length "$MAX_LENGTH"
+  --max_probe_batch "$MAX_PROBE_BATCH"
   --device "$DEVICE"
   --tsne_perplexity "$TSNE_PERPLEXITY"
   --tsne_n_iter "$TSNE_N_ITER"
@@ -49,6 +52,9 @@ fi
 if [ "$PREFER_AUTO_ON_FAIL" = "1" ]; then
   ARGS+=(--prefer_auto_on_fail)
 fi
+if [ "$DISABLE_AUTO_TUNE_BATCH" = "1" ]; then
+  ARGS+=(--disable_auto_tune_batch)
+fi
 if [ -n "$TRAIN_DATASET" ]; then
   ARGS+=(--train_dataset "$TRAIN_DATASET")
 else
@@ -59,4 +65,3 @@ if [ -n "$PLOT_LAYERS" ]; then
 fi
 
 "$PYTHON_BIN" "$SCRIPT_DIR/embedding_cluster_03_plot_selected_layers_tsne.py" "${ARGS[@]}" "$@"
-
