@@ -547,6 +547,89 @@ def extract_last_token_representations(
     return {k: np.concatenate(v, axis=0) if v else np.zeros((0, 0), dtype=np.float32) for k, v in out_by_layer.items()}
 
 
+def extract_token_representations_at_indices(
+    model: torch.nn.Module,
+    tokenizer: AutoTokenizer,
+    texts: Sequence[str],
+    token_indices: Sequence[int],
+    layers: Sequence[int],
+    batch_size: int,
+    device: str,
+    max_length: int,
+    auto_tune_batch: bool = True,
+    max_probe_batch: int = 256,
+) -> Dict[int, np.ndarray]:
+    if len(texts) != len(token_indices):
+        raise ValueError(f"texts/token_indices length mismatch: {len(texts)} vs {len(token_indices)}")
+    in_dev = resolve_model_input_device(model, device)
+
+    eff_batch = max(1, int(batch_size))
+    if auto_tune_batch or int(batch_size) <= 0:
+        start_bs = max(1, int(batch_size)) if int(batch_size) > 0 else 8
+        try:
+            eff_batch = auto_probe_batch_size(
+                model=model,
+                tokenizer=tokenizer,
+                texts=texts,
+                device=device,
+                max_length=max_length,
+                start_batch=start_bs,
+                max_probe_batch=max_probe_batch,
+            )
+        except Exception:
+            eff_batch = start_bs
+
+    out_by_layer: Dict[int, List[np.ndarray]] = {int(l): [] for l in layers}
+    st = 0
+    while st < len(texts):
+        cur_bs = min(eff_batch, len(texts) - st)
+        try:
+            batch = list(texts[st : st + cur_bs])
+            idxs = list(int(x) for x in token_indices[st : st + cur_bs])
+            enc = tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=(max_length > 0),
+                max_length=max_length if max_length > 0 else None,
+            )
+            input_ids = enc["input_ids"].to(in_dev)
+            attn = enc["attention_mask"].to(in_dev)
+            seq_len = attn.sum(dim=1).long()  # [B]
+
+            pick_idx = torch.tensor(idxs, dtype=torch.long, device=in_dev)
+            # ensure valid index in [0, seq_len-1]
+            pick_idx = torch.minimum(pick_idx, torch.clamp(seq_len - 1, min=0))
+            pick_idx = torch.clamp(pick_idx, min=0)
+
+            with torch.inference_mode():
+                outputs = model(
+                    input_ids=input_ids,
+                    attention_mask=attn,
+                    output_hidden_states=True,
+                    use_cache=False,
+                )
+            hs = outputs.hidden_states
+            bsz = input_ids.shape[0]
+            batch_ids = torch.arange(bsz, device=in_dev)
+            for l in layers:
+                h = hs[int(l)]
+                picked = h[batch_ids, pick_idx, :]
+                out_by_layer[int(l)].append(picked.detach().to(dtype=torch.float32, device="cpu").numpy())
+
+            del outputs, hs, input_ids, attn, enc, batch
+            st += cur_bs
+        except RuntimeError as e:
+            if _is_cuda_oom_error(e) and cur_bs > 1:
+                eff_batch = max(1, cur_bs // 2)
+                if should_clear_cuda_cache(device):
+                    torch.cuda.empty_cache()
+                continue
+            raise
+
+    return {k: np.concatenate(v, axis=0) if v else np.zeros((0, 0), dtype=np.float32) for k, v in out_by_layer.items()}
+
+
 def knn_purity(x: np.ndarray, y_int: np.ndarray, k: int = 10) -> float:
     if len(x) <= 1:
         return float("nan")
