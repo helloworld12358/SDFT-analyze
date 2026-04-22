@@ -1,4 +1,4 @@
-﻿# Epoch0 QA-A最后Token 聚类实验说明
+# Epoch0 QA-A最后Token 聚类实验说明
 
 ## 1. 目标
 - 只使用 `epoch_0`（base模型，无LoRA）。
@@ -23,6 +23,12 @@
   - 单机4GPU调度器
   - 自动并行运行 `family × seed` 所有作业
   - 默认跳过已完成作业（可续跑）
+- `embedding_cluster_epoch0_qa_02b_pick_shared_layers.py`
+  - 从已有汇总中自动挑选“跨family同层可比”的投影层
+  - 支持策略：`common_quality` / `delta_focus` / `balanced`
+- `run_embedding_cluster_epoch0_qa_answer_lasttok_shared_tsne.sh`
+  - 基于上一步挑选的共享层，重跑同层 t-SNE（SFT/SDFT 用同一批层）
+  - 默认写到新目录，不覆盖旧结果
 
 ## 4. 输出目录（默认）
 - `DataInf/results/embedding_cluster_epoch0_qa_answer_lasttok`
@@ -43,3 +49,22 @@
 - `EMBED_QA0_FAMILIES=sft,sdft`
 - `EMBED_QA0_SKIP_DONE=1`
 - `EMBED_QA0_DISABLE_TSNE=0`（若先快跑统计可设为1）
+
+## 6. 同层可比 t-SNE（推荐用于对比图）
+如果已经有一版全层统计结果，建议改用：
+- `run_embedding_cluster_epoch0_qa_answer_lasttok_shared_tsne.sh`
+
+示例（自动挑 3 层，共享于 SFT/SDFT）：
+```bash
+export EMBED_QA0_BASE_OUTPUT_ROOT=/inspire/hdd/project/.../DataInf/results/embedding_cluster_epoch0_qa_answer_lasttok
+export EMBED_QA0_OUTPUT_ROOT=/inspire/hdd/project/.../DataInf/results/embedding_cluster_epoch0_qa_answer_lasttok_shared_tsne
+export EMBED_QA0_SHARED_POLICY=common_quality
+export EMBED_QA0_SHARED_TOP_K=3
+bash DataInf/script/run_embedding_cluster_epoch0_qa_answer_lasttok_shared_tsne.sh
+```
+
+若你想固定层号（例如 `16,17,20`）：
+```bash
+export EMBED_QA0_SHARED_LAYERS=16,17,20
+bash DataInf/script/run_embedding_cluster_epoch0_qa_answer_lasttok_shared_tsne.sh
+```
