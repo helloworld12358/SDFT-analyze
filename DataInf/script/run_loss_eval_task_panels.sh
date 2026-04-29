@@ -16,16 +16,22 @@ OUT_DIR="${LOSS_EVAL_PANEL_OUTPUT_ROOT:-}"
 MATRIX_CSV="${LOSS_EVAL_MATRIX_CSV:-}"
 FMT="${LOSS_EVAL_PANEL_FORMAT:-pdf}"
 YMIN="${LOSS_EVAL_PANEL_YMIN:-}"
+SRC_MODE="${LOSS_EVAL_PANEL_SOURCE_MODE:-auto}"
+LOSS_EVAL_ROOT="${LOSS_EVAL_PANEL_LOSS_EVAL_ROOT:-}"
 
 EXTRA_ARGS=()
 if [ -n "$OUT_DIR" ]; then EXTRA_ARGS+=(--output_dir "$OUT_DIR"); fi
 if [ -n "$MATRIX_CSV" ]; then EXTRA_ARGS+=(--matrix_csv "$MATRIX_CSV"); fi
 if [ -n "$YMIN" ]; then EXTRA_ARGS+=(--y_min "$YMIN"); fi
+if [ -n "$LOSS_EVAL_ROOT" ]; then EXTRA_ARGS+=(--loss_eval_root "$LOSS_EVAL_ROOT"); fi
+EXTRA_ARGS+=(--source_mode "$SRC_MODE")
 
 echo "[loss_eval_task_panels] datainf_root=$DATAINF_ROOT"
 if [ -n "$OUT_DIR" ]; then echo "[loss_eval_task_panels] output_dir=$OUT_DIR"; fi
 if [ -n "$MATRIX_CSV" ]; then echo "[loss_eval_task_panels] matrix_csv=$MATRIX_CSV"; fi
 if [ -n "$YMIN" ]; then echo "[loss_eval_task_panels] y_min=$YMIN"; fi
+echo "[loss_eval_task_panels] source_mode=$SRC_MODE"
+if [ -n "$LOSS_EVAL_ROOT" ]; then echo "[loss_eval_task_panels] loss_eval_root=$LOSS_EVAL_ROOT"; fi
 
 "$PYTHON_BIN" "$SCRIPT_DIR/loss_eval_04_plot_testtask_7groups_bar.py" \
   --datainf_root "$DATAINF_ROOT" \

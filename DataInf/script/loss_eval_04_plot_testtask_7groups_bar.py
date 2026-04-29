@@ -58,6 +58,15 @@ def detect_result_roots(datainf_root: Path) -> List[Path]:
     return roots
 
 
+def detect_loss_eval_roots(datainf_root: Path) -> List[Path]:
+    roots: List[Path] = []
+    for rr in detect_result_roots(datainf_root):
+        p = rr / "loss_eval"
+        if p.is_dir():
+            roots.append(p)
+    return roots
+
+
 def try_load_from_csv(path: Path) -> Optional[pd.DataFrame]:
     if not path.is_file():
         return None
@@ -93,6 +102,85 @@ def has_non_nan_value(df: pd.DataFrame) -> bool:
         return False
     num = df[value_cols].apply(pd.to_numeric, errors="coerce")
     return bool(num.notna().any().any())
+
+
+def load_rows_list_json(path: Path) -> List[Dict[str, object]]:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            obj = json.load(f)
+    except Exception:
+        return []
+    if isinstance(obj, list):
+        return [x for x in obj if isinstance(x, dict)]
+    if isinstance(obj, dict):
+        rows = obj.get("rows")
+        if isinstance(rows, list):
+            return [x for x in rows if isinstance(x, dict)]
+    return []
+
+
+def build_wide_table_from_loss_eval_rows(datainf_root: Path, loss_eval_root: str = "") -> Optional[Tuple[pd.DataFrame, Path]]:
+    roots: List[Path] = []
+    if loss_eval_root.strip():
+        p = Path(loss_eval_root).expanduser().resolve()
+        if p.is_dir():
+            roots.append(p)
+    else:
+        roots.extend(detect_loss_eval_roots(datainf_root))
+
+    for root in roots:
+        files: List[Path] = []
+        files.extend(Path(x) for x in sorted((root).glob("loss_rows_all_*.json")))
+        files.extend(Path(x) for x in sorted((root / "by_train_dataset").glob("*/loss_rows_*.json")))
+        if not files:
+            continue
+
+        rows: List[Dict[str, object]] = []
+        seen = set()
+        for fp in files:
+            for r in load_rows_list_json(fp):
+                train = str(r.get("train_dataset", "")).strip().lower()
+                method = str(r.get("method", "")).strip().lower()
+                epoch = str(r.get("epoch", "")).strip().lower()
+                task = str(r.get("test_task", "")).strip().lower()
+                if not train or not method or not epoch or not task:
+                    continue
+                if method not in ("sft", "sdft"):
+                    continue
+                status = str(r.get("status", "")).strip().lower()
+                if status and status != "ok":
+                    continue
+                val = pd.to_numeric(pd.Series([r.get("loss_mean_token")]), errors="coerce").iloc[0]
+                if pd.isna(val):
+                    continue
+                key = (train, method, epoch, task)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(
+                    {
+                        "train_dataset": train,
+                        "method": method,
+                        "epoch": epoch,
+                        "task": task,
+                        "loss_mean": float(val),
+                    }
+                )
+
+        if not rows:
+            continue
+
+        agg = pd.DataFrame(rows)
+        wide = agg.pivot_table(
+            index=["train_dataset", "method", "epoch"],
+            columns="task",
+            values="loss_mean",
+            aggfunc="mean",
+        ).reset_index()
+        wide.columns.name = None
+        if has_non_nan_value(wide):
+            return wide, root
+    return None
 
 
 def parse_combo_from_path(path: Path) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -178,7 +266,17 @@ def build_wide_table_from_sample_stats(datainf_root: Path) -> Optional[pd.DataFr
     return wide
 
 
-def locate_wide_table(datainf_root: Path, matrix_csv: str) -> Tuple[pd.DataFrame, Path]:
+def locate_wide_table(datainf_root: Path, matrix_csv: str, source_mode: str, loss_eval_root: str) -> Tuple[pd.DataFrame, Path]:
+    # 1) force from loss_eval rows
+    if source_mode == "loss_eval_rows":
+        got = build_wide_table_from_loss_eval_rows(datainf_root, loss_eval_root)
+        if got is not None:
+            return got
+        raise FileNotFoundError(
+            f"source_mode=loss_eval_rows but cannot build from loss_rows*.json under {loss_eval_root or '<auto loss_eval>'}"
+        )
+
+    # 2) explicit matrix csv/json
     if matrix_csv.strip():
         p = Path(matrix_csv).expanduser().resolve()
         df = try_load_from_csv(p)
@@ -186,6 +284,12 @@ def locate_wide_table(datainf_root: Path, matrix_csv: str) -> Tuple[pd.DataFrame
             return df, p
         print(f"[warn] matrix_csv unusable (missing/invalid/all-NaN), fallback to auto source: {p}")
 
+    # 3) try loss_eval rows before legacy tables (for better alignment with user's requested source)
+    got = build_wide_table_from_loss_eval_rows(datainf_root, loss_eval_root)
+    if got is not None:
+        return got
+
+    # 4) fallback to legacy wide tables
     candidates: List[Path] = []
     for rr in detect_result_roots(datainf_root):
         candidates.extend(
@@ -208,6 +312,7 @@ def locate_wide_table(datainf_root: Path, matrix_csv: str) -> Tuple[pd.DataFrame
             continue
         return df, p
 
+    # 5) final fallback from loss_theory sample_stats
     df_sample = build_wide_table_from_sample_stats(datainf_root)
     if df_sample is not None and has_non_nan_value(df_sample):
         return df_sample, (datainf_root / "results" / "loss_theory" / "by_combo" / "**/sample_stats.csv")
@@ -365,6 +470,20 @@ def main() -> None:
     parser.add_argument("--tasks", type=str, default="alpaca_eval,gsm8k,humaneval,multiarith,openfunction")
     parser.add_argument("--format", type=str, default="pdf", choices=["pdf", "png"])
     parser.add_argument("--y_min", type=float, default=None, help="Optional fixed y-axis lower bound (e.g., 1.0).")
+    parser.add_argument(
+        "--source_mode",
+        type=str,
+        default="auto",
+        choices=["auto", "loss_eval_rows"],
+        help="auto: matrix_csv->loss_eval_rows->legacy tables->sample_stats; "
+        "loss_eval_rows: force only loss_eval rows source.",
+    )
+    parser.add_argument(
+        "--loss_eval_root",
+        type=str,
+        default="",
+        help="Optional explicit loss_eval root directory, e.g. /.../DataInf/results/loss_eval",
+    )
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -380,7 +499,7 @@ def main() -> None:
     output_dir = Path(args.output_dir).resolve() if args.output_dir.strip() else (result_root / "loss_eval_task_panels")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    df, src = locate_wide_table(datainf_root, args.matrix_csv)
+    df, src = locate_wide_table(datainf_root, args.matrix_csv, args.source_mode, args.loss_eval_root)
     lookup = build_lookup(df, tasks)
 
     print(f"[source] {src}")
