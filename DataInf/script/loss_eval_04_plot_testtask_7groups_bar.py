@@ -385,78 +385,209 @@ def make_task_figure(
     out_dir: Path,
     fmt: str,
     y_min: Optional[float],
+    add_delta_panel: bool,
+    sort_by_delta: bool,
 ) -> Path:
-    fig, axes = plt.subplots(2, 4, figsize=(20, 9), constrained_layout=True)
-    axes = axes.flatten()
-
-    x = np.arange(6)
-    x_labels = ["E0-S", "E0-D", "E1-S", "E1-D", "E5-S", "E5-D"]
-    colors = ["#4C78A8", "#F58518", "#4C78A8", "#F58518", "#4C78A8", "#F58518"]
-
+    # Prepare per-train values first for optional sorting and shared y-limits.
+    recs: List[Dict[str, object]] = []
     fallback_notes: List[str] = []
-    all_vals_for_task: List[float] = []
+    all_main_vals: List[float] = []
+    all_delta_vals: List[float] = []
 
-    for i, train in enumerate(train_datasets):
-        ax = axes[i]
+    for train in train_datasets:
         train_l = train.lower()
-        vals: List[float] = []
-        labels_used: List[str] = []
+        sft_vals: List[float] = []
+        sdft_vals: List[float] = []
         for ep in EPOCHS_TARGET:
-            for method in METHODS_INTERLEAVED:
-                v, ep_used = pick_value(lookup, train_l, method, ep, task)
-                vals.append(np.nan if v is None else float(v))
-                labels_used.append(ep_used)
-                if ep == "epoch_5" and ep_used != "epoch_5":
-                    fallback_notes.append(f"{train}:{method}:{task} uses {ep_used} as E5")
-                if v is not None:
-                    all_vals_for_task.append(float(v))
+            v_sft, ep_used_sft = pick_value(lookup, train_l, "sft", ep, task)
+            v_sdft, ep_used_sdft = pick_value(lookup, train_l, "sdft", ep, task)
+            sft_vals.append(np.nan if v_sft is None else float(v_sft))
+            sdft_vals.append(np.nan if v_sdft is None else float(v_sdft))
+            if ep == "epoch_5":
+                if ep_used_sft != "epoch_5":
+                    fallback_notes.append(f"{train}:sft:{task} uses {ep_used_sft} as E5")
+                if ep_used_sdft != "epoch_5":
+                    fallback_notes.append(f"{train}:sdft:{task} uses {ep_used_sdft} as E5")
 
-        ax.bar(x, vals, color=colors, width=0.45, edgecolor="black", linewidth=0.4)
-        ax.set_title(train, fontsize=11)
-        ax.set_xticks(x)
-        ax.set_xticklabels(x_labels, rotation=30, ha="right", fontsize=8)
-        ax.set_ylabel("Loss", fontsize=9)
-        ax.grid(axis="y", linestyle="--", alpha=0.25)
+        main_vals = [
+            sft_vals[0],
+            sdft_vals[0],
+            sft_vals[1],
+            sdft_vals[1],
+            sft_vals[2],
+            sdft_vals[2],
+        ]
+        deltas = [
+            (sdft_vals[0] - sft_vals[0]) if np.isfinite(sdft_vals[0]) and np.isfinite(sft_vals[0]) else np.nan,
+            (sdft_vals[1] - sft_vals[1]) if np.isfinite(sdft_vals[1]) and np.isfinite(sft_vals[1]) else np.nan,
+            (sdft_vals[2] - sft_vals[2]) if np.isfinite(sdft_vals[2]) and np.isfinite(sft_vals[2]) else np.nan,
+        ]
+        finite_delta = [d for d in deltas if np.isfinite(d)]
+        delta_score = float(np.mean(finite_delta)) if finite_delta else np.inf
 
-        ymax = np.nanmax(vals) if np.isfinite(np.nanmax(vals)) else 1.0
-        for xi, yi in zip(x, vals):
-            if np.isnan(yi):
-                ax.text(xi, ymax * 0.04, "NA", ha="center", va="bottom", fontsize=7, color="red", rotation=90)
-            else:
-                ax.text(xi, yi + max(0.01, ymax * 0.01), f"{yi:.3f}", ha="center", va="bottom", fontsize=7, rotation=90)
+        recs.append(
+            {
+                "train": train,
+                "main_vals": main_vals,
+                "deltas": deltas,
+                "delta_score": delta_score,
+            }
+        )
+        all_main_vals.extend([v for v in main_vals if np.isfinite(v)])
+        all_delta_vals.extend([d for d in deltas if np.isfinite(d)])
 
-    # Apply shared y-range across the 7 panels in this task figure.
-    valid_vals = [v for v in all_vals_for_task if np.isfinite(v)]
-    if valid_vals:
-        global_max = max(valid_vals)
-        if y_min is None:
-            y0 = 0.0
+    if sort_by_delta:
+        recs.sort(key=lambda r: float(r["delta_score"]))
+
+    fig = plt.figure(figsize=(21, 10), constrained_layout=True)
+    outer = fig.add_gridspec(2, 4, wspace=0.28, hspace=0.30)
+
+    x_main = np.arange(6)
+    x_main_labels = [
+        "Epoch 0\nSFT",
+        "Epoch 0\nSDFT",
+        "Epoch 1\nSFT",
+        "Epoch 1\nSDFT",
+        "Epoch 5\nSFT",
+        "Epoch 5\nSDFT",
+    ]
+    x_delta = np.arange(3)
+    x_delta_labels = ["Epoch 0", "Epoch 1", "Epoch 5"]
+    color_sft = "#4C78A8"
+    color_sdft = "#F58518"
+    color_delta = "#6B6B6B"
+
+    top_axes: List[plt.Axes] = []
+    bot_axes: List[plt.Axes] = []
+
+    for idx in range(8):
+        r = idx // 4
+        c = idx % 4
+        slot = outer[r, c]
+        if idx >= len(recs):
+            ax_empty = fig.add_subplot(slot)
+            ax_empty.axis("off")
+            continue
+
+        rec = recs[idx]
+        train = str(rec["train"])
+        main_vals = np.array(rec["main_vals"], dtype=float)
+        deltas = np.array(rec["deltas"], dtype=float)
+
+        if add_delta_panel:
+            inner = slot.subgridspec(2, 1, height_ratios=[3.8, 1.4], hspace=0.02)
+            ax_top = fig.add_subplot(inner[0])
+            ax_bot = fig.add_subplot(inner[1])
         else:
-            y0 = float(y_min)
-        # Keep top margin for labels.
-        y1 = max(global_max * 1.10, y0 + 0.2)
-        for i in range(len(train_datasets)):
-            axes[i].set_ylim(y0, y1)
+            ax_top = fig.add_subplot(slot)
+            ax_bot = None
 
-    # Hide the last empty subplot (8th slot).
-    if len(train_datasets) < len(axes):
-        for j in range(len(train_datasets), len(axes)):
-            axes[j].axis("off")
+        bar_colors = [color_sft, color_sdft, color_sft, color_sdft, color_sft, color_sdft]
+        ax_top.bar(x_main, main_vals, color=bar_colors, width=0.36, edgecolor="black", linewidth=0.35)
+        ax_top.set_title(train, fontsize=11)
+        ax_top.grid(axis="y", linestyle="--", alpha=0.25)
+        ax_top.tick_params(axis="y", labelsize=8)
 
-    fig.suptitle(f"Loss Bars by Train Dataset | Test Task: {task}", fontsize=14)
+        # Top-axis x labels: keep full wording (no short abbreviations).
+        ax_top.set_xticks(x_main)
+        ax_top.set_xticklabels(x_main_labels, fontsize=7, rotation=0)
+        ax_top.set_ylabel("Loss", fontsize=9)
+
+        ymax_local = np.nanmax(main_vals) if np.isfinite(np.nanmax(main_vals)) else 1.0
+        for xi, yi in zip(x_main, main_vals):
+            if np.isnan(yi):
+                ax_top.text(xi, ymax_local * 0.03, "NA", ha="center", va="bottom", fontsize=7, color="red", rotation=90)
+            else:
+                ax_top.text(xi, yi + max(0.01, ymax_local * 0.012), f"{yi:.3f}", ha="center", va="bottom", fontsize=7, rotation=90)
+
+        # Epoch-wise delta annotations above each pair in top panel.
+        for g in range(3):
+            v1 = main_vals[2 * g]
+            v2 = main_vals[2 * g + 1]
+            d = deltas[g]
+            if np.isfinite(v1) and np.isfinite(v2) and np.isfinite(d):
+                y_pair = max(v1, v2)
+                ax_top.text(
+                    2 * g + 0.5,
+                    y_pair + max(0.02, ymax_local * 0.04),
+                    f"\u0394={d:+.3f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="#333333",
+                )
+
+        if add_delta_panel and ax_bot is not None:
+            ax_bot.axhline(0.0, color="#333333", linewidth=0.7)
+            ax_bot.bar(x_delta, deltas, color=color_delta, width=0.52, edgecolor="black", linewidth=0.35)
+            ax_bot.set_xticks(x_delta)
+            ax_bot.set_xticklabels(x_delta_labels, fontsize=7)
+            ax_bot.tick_params(axis="y", labelsize=7)
+            ax_bot.grid(axis="y", linestyle="--", alpha=0.2)
+            ax_bot.set_ylabel("\u0394", fontsize=8, rotation=0, labelpad=8)
+            for xi, di in zip(x_delta, deltas):
+                if np.isfinite(di):
+                    ax_bot.text(
+                        xi,
+                        di + (0.01 if di >= 0 else -0.01),
+                        f"{di:+.3f}",
+                        ha="center",
+                        va="bottom" if di >= 0 else "top",
+                        fontsize=7,
+                    )
+
+            bot_axes.append(ax_bot)
+
+        top_axes.append(ax_top)
+
+    # Shared y-limits (top panels).
+    if all_main_vals:
+        global_max = max(all_main_vals)
+        y0 = 0.0 if y_min is None else float(y_min)
+        y1 = max(global_max * 1.16, y0 + 0.2)
+        for ax in top_axes:
+            ax.set_ylim(y0, y1)
+
+    # Shared y-limits (delta panels).
+    if add_delta_panel and bot_axes:
+        if all_delta_vals:
+            d_abs = max(abs(min(all_delta_vals)), abs(max(all_delta_vals)))
+            d_abs = max(d_abs * 1.25, 0.02)
+            for ax in bot_axes:
+                ax.set_ylim(-d_abs, d_abs)
+
+    # Global legend with full method names.
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1, color=color_sft, ec="black", lw=0.35),
+        plt.Rectangle((0, 0), 1, 1, color=color_sdft, ec="black", lw=0.35),
+        plt.Rectangle((0, 0), 1, 1, color=color_delta, ec="black", lw=0.35),
+    ]
+    legend_labels = [
+        "SFT (Supervised Fine-Tuning)",
+        "SDFT (Self-Distillation Fine-Tuning)",
+        "\u0394 = SDFT - SFT",
+    ]
+    fig.legend(legend_handles, legend_labels, loc="upper center", ncol=3, fontsize=10, frameon=False)
+
+    title_suffix = " (sorted by avg \u0394 ascending)" if sort_by_delta else ""
+    fig.suptitle(
+        f"Loss Comparison by Train Dataset | Test Task: {task}{title_suffix}",
+        fontsize=14,
+        y=0.995,
+    )
 
     if fallback_notes:
         note = " ; ".join(sorted(set(fallback_notes))[:5])
         fig.text(
             0.01,
-            0.01,
-            f"Note: E5 fallback detected (showing first few): {note}",
+            0.006,
+            f"Note: Epoch-5 fallback detected (showing first few): {note}",
             fontsize=8,
             color="#555555",
         )
 
     out_path = out_dir / f"loss_bar_7groups_{task}.{fmt}"
-    fig.savefig(out_path, dpi=200 if fmt.lower() == "png" else None, bbox_inches="tight")
+    fig.savefig(out_path, dpi=220 if fmt.lower() == "png" else None, bbox_inches="tight")
     plt.close(fig)
     return out_path
 
@@ -470,6 +601,18 @@ def main() -> None:
     parser.add_argument("--tasks", type=str, default="alpaca_eval,gsm8k,humaneval,multiarith,openfunction")
     parser.add_argument("--format", type=str, default="pdf", choices=["pdf", "png"])
     parser.add_argument("--y_min", type=float, default=None, help="Optional fixed y-axis lower bound (e.g., 1.0).")
+    parser.add_argument(
+        "--add_delta_panel",
+        type=int,
+        default=1,
+        help="1: add delta (SDFT-SFT) mini-panel below each train subplot; 0: disable.",
+    )
+    parser.add_argument(
+        "--sort_train_by_delta",
+        type=int,
+        default=0,
+        help="1: sort 7 train datasets by average delta ascending (more negative first).",
+    )
     parser.add_argument(
         "--source_mode",
         type=str,
@@ -504,7 +647,16 @@ def main() -> None:
 
     print(f"[source] {src}")
     for task in tasks:
-        p = make_task_figure(lookup, task, train_datasets, output_dir, args.format, args.y_min)
+        p = make_task_figure(
+            lookup,
+            task,
+            train_datasets,
+            output_dir,
+            args.format,
+            args.y_min,
+            add_delta_panel=bool(int(args.add_delta_panel)),
+            sort_by_delta=bool(int(args.sort_train_by_delta)),
+        )
         print(str(p.resolve()))
 
 

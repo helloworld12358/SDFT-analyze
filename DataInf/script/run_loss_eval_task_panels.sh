@@ -18,6 +18,8 @@ FMT="${LOSS_EVAL_PANEL_FORMAT:-pdf}"
 YMIN="${LOSS_EVAL_PANEL_YMIN:-}"
 SRC_MODE="${LOSS_EVAL_PANEL_SOURCE_MODE:-auto}"
 LOSS_EVAL_ROOT="${LOSS_EVAL_PANEL_LOSS_EVAL_ROOT:-}"
+ADD_DELTA_PANEL="${LOSS_EVAL_PANEL_ADD_DELTA_PANEL:-1}"
+SORT_BY_DELTA="${LOSS_EVAL_PANEL_SORT_BY_DELTA:-0}"
 
 EXTRA_ARGS=()
 if [ -n "$OUT_DIR" ]; then EXTRA_ARGS+=(--output_dir "$OUT_DIR"); fi
@@ -25,6 +27,8 @@ if [ -n "$MATRIX_CSV" ]; then EXTRA_ARGS+=(--matrix_csv "$MATRIX_CSV"); fi
 if [ -n "$YMIN" ]; then EXTRA_ARGS+=(--y_min "$YMIN"); fi
 if [ -n "$LOSS_EVAL_ROOT" ]; then EXTRA_ARGS+=(--loss_eval_root "$LOSS_EVAL_ROOT"); fi
 EXTRA_ARGS+=(--source_mode "$SRC_MODE")
+EXTRA_ARGS+=(--add_delta_panel "$ADD_DELTA_PANEL")
+EXTRA_ARGS+=(--sort_train_by_delta "$SORT_BY_DELTA")
 
 echo "[loss_eval_task_panels] datainf_root=$DATAINF_ROOT"
 if [ -n "$OUT_DIR" ]; then echo "[loss_eval_task_panels] output_dir=$OUT_DIR"; fi
@@ -32,6 +36,8 @@ if [ -n "$MATRIX_CSV" ]; then echo "[loss_eval_task_panels] matrix_csv=$MATRIX_C
 if [ -n "$YMIN" ]; then echo "[loss_eval_task_panels] y_min=$YMIN"; fi
 echo "[loss_eval_task_panels] source_mode=$SRC_MODE"
 if [ -n "$LOSS_EVAL_ROOT" ]; then echo "[loss_eval_task_panels] loss_eval_root=$LOSS_EVAL_ROOT"; fi
+echo "[loss_eval_task_panels] add_delta_panel=$ADD_DELTA_PANEL"
+echo "[loss_eval_task_panels] sort_train_by_delta=$SORT_BY_DELTA"
 
 "$PYTHON_BIN" "$SCRIPT_DIR/loss_eval_04_plot_testtask_7groups_bar.py" \
   --datainf_root "$DATAINF_ROOT" \
