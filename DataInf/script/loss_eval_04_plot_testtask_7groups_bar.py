@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
-import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -89,13 +87,104 @@ def try_load_from_json(path: Path) -> Optional[pd.DataFrame]:
     return df
 
 
+def has_non_nan_value(df: pd.DataFrame) -> bool:
+    value_cols = [c for c in df.columns if c not in ("train_dataset", "method", "epoch")]
+    if not value_cols:
+        return False
+    num = df[value_cols].apply(pd.to_numeric, errors="coerce")
+    return bool(num.notna().any().any())
+
+
+def parse_combo_from_path(path: Path) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    # Expected pattern:
+    # .../loss_theory/by_combo/<train_dataset>/<method>/<epoch>/<task>/sample_stats.csv
+    parts = [p.lower() for p in path.parts]
+    try:
+        i = parts.index("by_combo")
+        train = parts[i + 1]
+        method = parts[i + 2]
+        epoch = parts[i + 3]
+        task = parts[i + 4]
+        return train, method, epoch, task
+    except Exception:
+        return None, None, None, None
+
+
+def build_wide_table_from_sample_stats(datainf_root: Path) -> Optional[pd.DataFrame]:
+    files: List[Path] = []
+    for rr in detect_result_roots(datainf_root):
+        files.extend((rr / "loss_theory" / "by_combo").glob("**/sample_stats.csv"))
+    files = sorted(set(files))
+    if not files:
+        return None
+
+    rows: List[Dict[str, object]] = []
+    for p in files:
+        try:
+            d = pd.read_csv(p, usecols=lambda c: c in {"train_dataset", "method", "epoch", "task", "Lbar_i"})
+        except Exception:
+            continue
+        if d.empty:
+            continue
+
+        train_col = str(d["train_dataset"].iloc[0]).strip().lower() if "train_dataset" in d.columns else ""
+        method_col = str(d["method"].iloc[0]).strip().lower() if "method" in d.columns else ""
+        epoch_col = str(d["epoch"].iloc[0]).strip().lower() if "epoch" in d.columns else ""
+        task_col = str(d["task"].iloc[0]).strip().lower() if "task" in d.columns else ""
+
+        train_p, method_p, epoch_p, task_p = parse_combo_from_path(p)
+        train = train_col or (train_p or "")
+        method = method_col or (method_p or "")
+        epoch = epoch_col or (epoch_p or "")
+        task = task_col or (task_p or "")
+
+        if not train or not method or not epoch or not task:
+            continue
+        if method not in ("sft", "sdft"):
+            continue
+
+        if "Lbar_i" in d.columns:
+            vals = pd.to_numeric(d["Lbar_i"], errors="coerce").dropna()
+        else:
+            vals = pd.Series(dtype=float)
+        if vals.empty:
+            continue
+
+        rows.append(
+            {
+                "train_dataset": train,
+                "method": method,
+                "epoch": epoch,
+                "task": task,
+                "loss_mean": float(vals.mean()),
+            }
+        )
+
+    if not rows:
+        return None
+
+    agg = pd.DataFrame(rows)
+    agg = (
+        agg.groupby(["train_dataset", "method", "epoch", "task"], as_index=False)["loss_mean"]
+        .mean()
+    )
+    wide = agg.pivot_table(
+        index=["train_dataset", "method", "epoch"],
+        columns="task",
+        values="loss_mean",
+        aggfunc="mean",
+    ).reset_index()
+    wide.columns.name = None
+    return wide
+
+
 def locate_wide_table(datainf_root: Path, matrix_csv: str) -> Tuple[pd.DataFrame, Path]:
     if matrix_csv.strip():
         p = Path(matrix_csv).expanduser().resolve()
         df = try_load_from_csv(p)
-        if df is None:
-            raise FileNotFoundError(f"Invalid or unreadable matrix_csv: {p}")
-        return df, p
+        if df is not None and has_non_nan_value(df):
+            return df, p
+        print(f"[warn] matrix_csv unusable (missing/invalid/all-NaN), fallback to auto source: {p}")
 
     candidates: List[Path] = []
     for rr in detect_result_roots(datainf_root):
@@ -115,18 +204,17 @@ def locate_wide_table(datainf_root: Path, matrix_csv: str) -> Tuple[pd.DataFrame
             df = try_load_from_json(p)
         if df is None:
             continue
-        value_cols = [c for c in df.columns if c not in ("train_dataset", "method", "epoch")]
-        if not value_cols:
-            continue
-        # Accept the table if not all numeric cells are NaN.
-        num = df[value_cols].apply(pd.to_numeric, errors="coerce")
-        if not bool(num.notna().any().any()):
+        if not has_non_nan_value(df):
             continue
         return df, p
 
+    df_sample = build_wide_table_from_sample_stats(datainf_root)
+    if df_sample is not None and has_non_nan_value(df_sample):
+        return df_sample, (datainf_root / "results" / "loss_theory" / "by_combo" / "**/sample_stats.csv")
+
     raise FileNotFoundError(
-        "Cannot find a valid loss wide table with non-NaN values. "
-        "Tried loss_eval/loss_eval_test2 *loss_tables_7x3x5_sft__sdft*."
+        "Cannot find valid non-NaN loss table. Tried: explicit matrix_csv, "
+        "loss_eval/loss_eval_test2 sft__sdft tables, and loss_theory/by_combo sample_stats.csv."
     )
 
 
@@ -285,4 +373,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
