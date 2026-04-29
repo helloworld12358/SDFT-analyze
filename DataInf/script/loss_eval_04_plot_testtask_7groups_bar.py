@@ -279,6 +279,7 @@ def make_task_figure(
     train_datasets: Sequence[str],
     out_dir: Path,
     fmt: str,
+    y_min: Optional[float],
 ) -> Path:
     fig, axes = plt.subplots(2, 4, figsize=(20, 9), constrained_layout=True)
     axes = axes.flatten()
@@ -288,6 +289,7 @@ def make_task_figure(
     colors = ["#4C78A8", "#F58518", "#4C78A8", "#F58518", "#4C78A8", "#F58518"]
 
     fallback_notes: List[str] = []
+    all_vals_for_task: List[float] = []
 
     for i, train in enumerate(train_datasets):
         ax = axes[i]
@@ -301,6 +303,8 @@ def make_task_figure(
                 labels_used.append(ep_used)
                 if ep == "epoch_5" and ep_used != "epoch_5":
                     fallback_notes.append(f"{train}:{method}:{task} uses {ep_used} as E5")
+                if v is not None:
+                    all_vals_for_task.append(float(v))
 
         ax.bar(x, vals, color=colors, width=0.45, edgecolor="black", linewidth=0.4)
         ax.set_title(train, fontsize=11)
@@ -315,6 +319,19 @@ def make_task_figure(
                 ax.text(xi, ymax * 0.04, "NA", ha="center", va="bottom", fontsize=7, color="red", rotation=90)
             else:
                 ax.text(xi, yi + max(0.01, ymax * 0.01), f"{yi:.3f}", ha="center", va="bottom", fontsize=7, rotation=90)
+
+    # Apply shared y-range across the 7 panels in this task figure.
+    valid_vals = [v for v in all_vals_for_task if np.isfinite(v)]
+    if valid_vals:
+        global_max = max(valid_vals)
+        if y_min is None:
+            y0 = 0.0
+        else:
+            y0 = float(y_min)
+        # Keep top margin for labels.
+        y1 = max(global_max * 1.10, y0 + 0.2)
+        for i in range(len(train_datasets)):
+            axes[i].set_ylim(y0, y1)
 
     # Hide the last empty subplot (8th slot).
     if len(train_datasets) < len(axes):
@@ -347,6 +364,7 @@ def main() -> None:
     parser.add_argument("--train_datasets", type=str, default="gsm8k,openfunction,magicoder,alpaca,dolly,lima,openhermes")
     parser.add_argument("--tasks", type=str, default="alpaca_eval,gsm8k,humaneval,multiarith,openfunction")
     parser.add_argument("--format", type=str, default="pdf", choices=["pdf", "png"])
+    parser.add_argument("--y_min", type=float, default=None, help="Optional fixed y-axis lower bound (e.g., 1.0).")
     args = parser.parse_args()
 
     script_dir = Path(__file__).resolve().parent
@@ -367,7 +385,7 @@ def main() -> None:
 
     print(f"[source] {src}")
     for task in tasks:
-        p = make_task_figure(lookup, task, train_datasets, output_dir, args.format)
+        p = make_task_figure(lookup, task, train_datasets, output_dir, args.format, args.y_min)
         print(str(p.resolve()))
 
 
