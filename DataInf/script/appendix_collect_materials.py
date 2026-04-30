@@ -182,6 +182,50 @@ def build_perf_delta(repo_root: Path) -> Tuple[pd.DataFrame, List[str], List[str
     if final_df.empty:
         missing.append("no final rows (epoch>1) found")
 
+    log_cache: Dict[str, Dict[str, float]] = {}
+
+    def parse_advbench_from_log(log_path: str) -> Dict[str, float]:
+        """
+        Best-effort parser for AdvBench raw/jailbreak metrics from existing perf logs.
+        Returns keys in {"AdvBench Raw", "AdvBench Jailbreak"} when found.
+        """
+        if not log_path:
+            return {}
+        p = Path(log_path)
+        if not p.is_file():
+            return {}
+        if log_path in log_cache:
+            return log_cache[log_path]
+
+        out: Dict[str, float] = {}
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            text = p.read_text(encoding="latin-1", errors="ignore")
+        lines = text.splitlines()
+        # Scan from tail to prioritize final report values.
+        for line in reversed(lines):
+            ll = line.lower()
+            nums = re.findall(r"[-+]?\d+(?:\.\d+)?", line)
+            if not nums:
+                continue
+            val = float(nums[-1])
+            if (
+                "advbench" in ll
+                and "raw" in ll
+            ) or (("safety" in ll or "adv" in ll) and "raw" in ll):
+                out.setdefault("AdvBench Raw", val)
+            if (
+                "advbench" in ll
+                and ("jailbreak" in ll or "jail" in ll)
+            ) or (("safety" in ll or "adv" in ll) and ("jailbreak" in ll or "jail" in ll)):
+                out.setdefault("AdvBench Jailbreak", val)
+            if "AdvBench Raw" in out and "AdvBench Jailbreak" in out:
+                break
+
+        log_cache[log_path] = out
+        return out
+
     # aggregate in case multiple h_mode rows remain
     agg_rows = []
     for (tr, md), g in final_df.groupby(["_train", "_method"], dropna=False):
@@ -194,6 +238,23 @@ def build_perf_delta(repo_root: Path) -> Tuple[pd.DataFrame, List[str], List[str
                     if not ser.empty:
                         vals.extend(list(ser.values))
             row[task] = float(pd.Series(vals).mean()) if vals else pd.NA
+
+        # Fallback for AdvBench Raw/Jailbreak from perf logs.
+        if pd.isna(row.get("AdvBench Raw")) or pd.isna(row.get("AdvBench Jailbreak")):
+            log_vals_raw: List[float] = []
+            log_vals_jb: List[float] = []
+            if "perf_log_path" in g.columns:
+                for lp in g["perf_log_path"].dropna().astype(str).tolist():
+                    parsed = parse_advbench_from_log(lp)
+                    if "AdvBench Raw" in parsed:
+                        log_vals_raw.append(parsed["AdvBench Raw"])
+                    if "AdvBench Jailbreak" in parsed:
+                        log_vals_jb.append(parsed["AdvBench Jailbreak"])
+            if pd.isna(row.get("AdvBench Raw")) and log_vals_raw:
+                row["AdvBench Raw"] = float(pd.Series(log_vals_raw).mean())
+            if pd.isna(row.get("AdvBench Jailbreak")) and log_vals_jb:
+                row["AdvBench Jailbreak"] = float(pd.Series(log_vals_jb).mean())
+
         agg_rows.append(row)
     agg = pd.DataFrame(agg_rows)
 
@@ -411,6 +472,14 @@ def build_shared_geometry(repo_root: Path) -> Tuple[pd.DataFrame, List[str], Lis
     if df.empty:
         missing.append("no valid train rows in shared-geometry source")
 
+    # Normalize delta direction to sdft_minus_sft.
+    sign = 1.0
+    if "delta_method" in df.columns:
+        dm = [str(x).strip().lower() for x in df["delta_method"].dropna().tolist()]
+        if dm and all("sft_minus_sdft" in x for x in dm):
+            sign = -1.0
+            notes.append("delta_method is sft_minus_sdft; all delta columns are sign-flipped to sdft_minus_sft.")
+
     final_df = pick_final_rows(df, group_cols=["_train"], prefer_hmode=True)
     if final_df.empty:
         missing.append("no final rows (epoch>1) found for shared geometry")
@@ -445,7 +514,7 @@ def build_shared_geometry(repo_root: Path) -> Tuple[pd.DataFrame, List[str], Lis
             if name not in g.columns:
                 return pd.NA
             ser = pd.to_numeric(g[name], errors="coerce").dropna()
-            return float(ser.mean()) if not ser.empty else pd.NA
+            return float(sign * ser.mean()) if not ser.empty else pd.NA
 
         mpg = pd.NA
         if perf_cols:
@@ -453,7 +522,7 @@ def build_shared_geometry(repo_root: Path) -> Tuple[pd.DataFrame, List[str], Lis
             for c in perf_cols:
                 ser = pd.to_numeric(g[c], errors="coerce").dropna()
                 if not ser.empty:
-                    vals.extend(list(ser.values))
+                    vals.extend([sign * float(v) for v in ser.values])
             if vals:
                 mpg = float(pd.Series(vals).mean())
             else:
