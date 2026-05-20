@@ -153,10 +153,10 @@ def build_ownh_dolly_tc_heatmap(output_dir: Path) -> Path:
     im_c_sft = axes[1, 0].imshow(c_sft, cmap="YlGnBu", vmin=c_vmin, vmax=c_vmax, aspect="auto")
     im_c_sdft = axes[1, 1].imshow(c_sdft, cmap="YlGnBu", vmin=c_vmin, vmax=c_vmax, aspect="auto")
 
-    axes[0, 0].set_title("SFT T Matrix")
-    axes[0, 1].set_title("SDFT T Matrix")
-    axes[1, 0].set_title("SFT C Matrix")
-    axes[1, 1].set_title("SDFT C Matrix")
+    axes[0, 0].set_title(r"SFT $I_H$ Matrix")
+    axes[0, 1].set_title(r"SDFT $I_H$ Matrix")
+    axes[1, 0].set_title(r"SFT $\rho_H$ Matrix")
+    axes[1, 1].set_title(r"SDFT $\rho_H$ Matrix")
 
     for ax in axes.flat:
         ax.set_xticks(np.arange(len(labels)))
@@ -171,9 +171,9 @@ def build_ownh_dolly_tc_heatmap(output_dir: Path) -> Path:
     _annotate_heatmap(axes[1, 1], c_sdft, ".2f")
 
     cbar_t = fig.colorbar(im_t_sdft, ax=[axes[0, 0], axes[0, 1]], shrink=0.86, pad=0.02)
-    cbar_t.set_label("T Value", rotation=90)
+    cbar_t.set_label(r"$I_H$ Value", rotation=90)
     cbar_c = fig.colorbar(im_c_sdft, ax=[axes[1, 0], axes[1, 1]], shrink=0.86, pad=0.02)
-    cbar_c.set_label("C Value", rotation=90)
+    cbar_c.set_label(r"$\rho_H$ Value", rotation=90)
 
     out = output_dir / "chapter4_ownH_dolly_TC_heatmap.pdf"
     fig.savefig(out, bbox_inches="tight")
@@ -207,14 +207,14 @@ def build_train_test_deltac_heatmap(output_dir: Path) -> Path:
     ax.set_yticks(np.arange(len(rows)))
     ax.set_xticklabels(cols, rotation=35, ha="right")
     ax.set_yticklabels(rows)
-    ax.set_title("Train-Test Delta C Heatmap (SDFT - SFT, epoch_5)")
+    ax.set_title(r"Train-Test $\Delta \rho_H$ Heatmap (SDFT - SFT, Endpoint)")
 
     for i in range(delta_c.shape[0]):
         for j in range(delta_c.shape[1]):
             ax.text(j, i, f"{delta_c[i, j]:.3f}", ha="center", va="center", fontsize=8)
 
     cbar = fig.colorbar(im, ax=ax, shrink=0.95, pad=0.02)
-    cbar.set_label("Delta C", rotation=90)
+    cbar.set_label(r"$\Delta \rho_H$", rotation=90)
 
     out = output_dir / "chapter4_train_test_deltaC_heatmap.pdf"
     fig.savefig(out, bbox_inches="tight")
